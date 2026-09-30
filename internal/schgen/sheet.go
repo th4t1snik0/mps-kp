@@ -31,7 +31,8 @@ type Sheet struct {
 	buses   [][2]Pt
 	entries [][2]Pt
 	perp    bool
-	A4      bool // лист А4 книжный (перечень элементов), иначе А3 альбомный
+	A4      bool   // лист А4 книжный (перечень элементов), иначе А3 альбомный
+	J       Jitter // «почерк» листа (jitter.go); нулевой — как Plain
 }
 
 type TitleBlock struct {
@@ -169,7 +170,11 @@ func (s *Sheet) Sym(sym, ref, value string, at Pt, o SymOpt) *Comp {
 				just = "left"
 			}
 		}
-		eff := L("effects", L("font", L("size", F(1.27), F(1.27))))
+		fs := 1.27 // мелкие элементы — всегда 1,27 (иначе подписи налезают на соседей)
+		if p := refPrefix(ref); p == "DD" || p == "XS" || p == "HG" {
+			fs = s.refFont()
+		}
+		eff := L("effects", L("font", L("size", F(fs), F(fs))))
 		if just != "" && just != "center" {
 			eff.Kids = append(eff.Kids, L("justify", A(just)))
 		}
@@ -351,7 +356,7 @@ func (s *Sheet) Label(name string, at Pt, right bool) {
 	}
 	s.items = append(s.items, L("label", Q(name),
 		L("at", F(at.X), F(at.Y), F(ang)),
-		L("effects", L("font", L("size", F(labelFont), F(labelFont))), L("justify", A(just), A("bottom"))),
+		L("effects", L("font", L("size", F(s.labelFont()), F(s.labelFont()))), L("justify", A(just), A("bottom"))),
 		L("uuid", Q(s.uuid()))))
 }
 
@@ -359,7 +364,7 @@ func (s *Sheet) Label(name string, at Pt, right bool) {
 func (s *Sheet) VLabel(name string, at Pt) {
 	s.items = append(s.items, L("label", Q(name),
 		L("at", F(at.X), F(at.Y), F(90)),
-		L("effects", L("font", L("size", F(labelFont), F(labelFont))), L("justify", A("left"), A("bottom"))),
+		L("effects", L("font", L("size", F(s.labelFont()), F(s.labelFont()))), L("justify", A("left"), A("bottom"))),
 		L("uuid", Q(s.uuid()))))
 }
 
@@ -453,6 +458,7 @@ func (s *Sheet) String() string {
 	s.splitWires()
 	s.autoJunctions()
 	s.emitBuses()
+	s.shift()
 	root := L("kicad_sch",
 		L("version", A("20260306")),
 		L("generator", Q("mpsgen")),
@@ -494,4 +500,36 @@ func (s *Sheet) paperNode() *Node {
 		return L("paper", Q("A4"), A("portrait"))
 	}
 	return L("paper", Q("A3"))
+}
+
+func (s *Sheet) refFont() float64 {
+	if s.J.RefFont > 0 {
+		return s.J.RefFont
+	}
+	return 1.27
+}
+
+func (s *Sheet) labelFont() float64 {
+	if s.J.LabelFont > 0 {
+		return s.J.LabelFont
+	}
+	return labelFont
+}
+
+// shift сдвигает весь чертёж (кроме lib_symbols) на J.ShiftX/ShiftY — один раз, после всех расчётов связей.
+func (s *Sheet) shift() {
+	dx, dy := s.J.ShiftX, s.J.ShiftY
+	if dx == 0 && dy == 0 {
+		return
+	}
+	for _, it := range s.items {
+		it.Walk(func(n *Node) {
+			switch n.Head() {
+			case "at", "xy", "start", "end", "mid", "center":
+				n.Kids[1] = F(round(n.Num(0) + dx))
+				n.Kids[2] = F(round(n.Num(1) + dy))
+			}
+		})
+	}
+	s.J.ShiftX, s.J.ShiftY = 0, 0
 }

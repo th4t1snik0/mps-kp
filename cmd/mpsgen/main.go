@@ -35,10 +35,12 @@ func main() {
 		year   = flag.String("year", "23", "год набора группы: А-12 → А-12-<year>")
 		doRend = flag.Bool("render", false, "после генерации запустить scripts/render.sh (PDF, PNG, ERC)")
 		style  = flag.String("style", "", "стиль листа A|B|C|D (пусто — по ФИО, см. internal/schgen/style.go)")
+		plain  = flag.Bool("plain", false, "без «почерка» (сдвигов и вариаций шрифтов) — как эталон")
 		lib    = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
 		wks    = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
 	)
 	flag.Parse()
+	plainSheet = *plain
 	dir, err := run(*table, *stud, *group, *m, *name, *chk, *style, *year, *root, *out, *lib, *wks)
 	if err == nil && *doRend {
 		cmd := exec.Command("scripts/render.sh", dir)
@@ -105,6 +107,8 @@ func run(tablePath, studPath, group string, m int, name, checker, style, year, r
 	return out, schematic(p, st, out, libPath, wksPath)
 }
 
+var plainSheet bool
+
 // schematic рисует схему Э3 с нуля построителем (internal/schgen).
 func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath string) error {
 	lib, err := schgen.LoadLib(libPath)
@@ -121,6 +125,10 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 		Decoder: p.CSMode == "decoder", CSEn: p.CSEnPin, Filter: p.FilterCap,
 		Style: schgen.PickStyle(st.Style, st.Name),
 		Date:  st.Date, Student: st.Name, Checker: st.Checker,
+	}
+	if !plainSheet {
+		j := schgen.MakeJitter(fmt.Sprintf("%s|%s|%d", st.Name, st.GroupFull, p.M), p.Rows)
+		v.Jitter = &j
 	}
 	sh := schgen.Build(lib, v, fmt.Sprintf("%s-%d", p.Group, p.M))
 	writes := map[string]string{

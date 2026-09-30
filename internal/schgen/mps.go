@@ -9,16 +9,17 @@ import (
 
 // Variant — всё, что в схеме зависит от варианта.
 type Variant struct {
-	Cols, Rows int    // клавиатура: столбцы × строки (4×3 при чётном M, 3×4 при нечётном)
-	Anode      bool   // индикатор с общим анодом (FYS-5612BX)
-	CS         CSPins // P2.x для каждого устройства
-	Y1, Y2     string // P1.x стробов
-	KbInt      string // INT0 | INT1 — вход МК для IRQ клавиатуры
-	X2Int      string // второй INT — строб X2
-	Decoder    bool   // ТЗ-2026: CS — выходы 74HC138 (A13..A15, E2 = CS_EN); CS.* = "Y0".."Y7"
-	CSEn       string // вывод МК CS_EN (P3.4)
-	Filter     string // номинал фильтров на корпус: «68 н» (2025) / «33 н» (2026)
-	Style      Style  // вид листа (A–D), см. style.go
+	Cols, Rows int     // клавиатура: столбцы × строки (4×3 при чётном M, 3×4 при нечётном)
+	Anode      bool    // индикатор с общим анодом (FYS-5612BX)
+	CS         CSPins  // P2.x для каждого устройства
+	Y1, Y2     string  // P1.x стробов
+	KbInt      string  // INT0 | INT1 — вход МК для IRQ клавиатуры
+	X2Int      string  // второй INT — строб X2
+	Decoder    bool    // ТЗ-2026: CS — выходы 74HC138 (A13..A15, E2 = CS_EN); CS.* = "Y0".."Y7"
+	CSEn       string  // вывод МК CS_EN (P3.4)
+	Filter     string  // номинал фильтров на корпус: «68 н» (2025) / «33 н» (2026)
+	Style      Style   // вид листа (A–D), см. style.go
+	Jitter     *Jitter // «почерк» (jitter.go); nil — Plain
 	Date       string
 	Student    string
 	Checker    string
@@ -123,6 +124,10 @@ func (b *builder) tapRight(pin Pt, busX float64, name string) {
 	e := Pt{busX - 2.54, pin.Y}
 	b.Wire(pin, e)
 	b.BusEntry(e, 2.54, 2.54)
+	if b.Sheet.J.LabelAtPin && e.X-pin.X > 12 {
+		b.Label(name, pin.Add(1.27, 0), false)
+		return
+	}
 	b.Label(name, e, true)
 }
 
@@ -131,6 +136,10 @@ func (b *builder) tapLeft(pin Pt, busX float64, name string) {
 	e := Pt{busX + 2.54, pin.Y}
 	b.Wire(pin, e)
 	b.BusEntry(Pt{busX, pin.Y + 2.54}, 2.54, -2.54)
+	if b.Sheet.J.LabelAtPin && pin.X-e.X > 12 {
+		b.Label(name, pin.Add(-1.27, 0), true)
+		return
+	}
 	b.Label(name, e, false)
 }
 
@@ -143,7 +152,12 @@ func (b *builder) nc(pins ...Pt) {
 }
 
 // icLabels — обозначение и тип правее вывода питания сверху, как в принятой схеме.
-func icLabels(vccTip Pt) SymOpt {
+func (b *builder) icLabels(vccTip Pt) SymOpt {
+	if b.Sheet.J.RefLeft {
+		r := vccTip.Add(-3.81, -2.54)
+		v := vccTip.Add(-3.81, 0)
+		return SymOpt{RefAt: &r, ValAt: &v, RefJust: "right", ValJust: "right"}
+	}
 	r := vccTip.Add(3.81, -2.54)
 	v := vccTip.Add(3.81, 0)
 	return SymOpt{RefAt: &r, ValAt: &v, RefJust: "left", ValJust: "left"}
@@ -153,6 +167,10 @@ func icLabels(vccTip Pt) SymOpt {
 func Build(lib *Lib, v Variant, seed string) *Sheet {
 	b := &builder{Sheet: NewSheet(lib, seed), v: v, refs: map[string]int{}}
 	b.Roles = map[string]*Comp{}
+	b.Sheet.J = Plain
+	if v.Jitter != nil {
+		b.Sheet.J = *v.Jitter
+	}
 	if b.v.Style.Name == "" {
 		b.v.Style = Styles["A"]
 	}
@@ -185,7 +203,7 @@ func Build(lib *Lib, v Variant, seed string) *Sheet {
 
 func (b *builder) mcu() {
 	at := Pt{73.66, 78.74}
-	opt := icLabels(Pt{73.66, 38.1})
+	opt := b.icLabels(Pt{73.66, 38.1})
 	u := b.role("mcu", b.Sym("AT89S53", "DD3", "AT89S53", at, opt))
 	b.vcc(u.Pin("40"))
 	b.gnd(u.Pin("20"))
@@ -289,7 +307,7 @@ func ptr(p Pt) *Pt { return &p }
 // ---------------------------------------------------------------- защёлка адреса DD4
 
 func (b *builder) latch573(ref string, at Pt) *Comp {
-	u := b.Sym("74HC573", ref, "74AC573", at, icLabels(Pt{at.X, at.Y - 20.32}))
+	u := b.Sym("74HC573", ref, "74AC573", at, b.icLabels(Pt{at.X, at.Y - 20.32}))
 	b.vcc(u.Pin("20"))
 	b.gnd(u.Pin("10"))
 	// OE → GND
@@ -523,13 +541,13 @@ const (
 	kbColY  = 154.94
 )
 
-func (b *builder) rowY(r int) float64 { return kbRow0 + float64(r)*kbDY }
+func (b *builder) rowY(r int) float64 { return kbRow0 + float64(r)*b.Sheet.J.KbDY }
 
 func (b *builder) keyboard() {
 	v := b.v
 	// DD2 74HC173 — столбцы
 	at := Pt{63.5, 157.48}
-	u := b.role("kb173", b.Sym("74HC173", "DD2", "74HC173", at, icLabels(Pt{at.X, at.Y - 22.86})))
+	u := b.role("kb173", b.Sym("74HC173", "DD2", "74HC173", at, b.icLabels(Pt{at.X, at.Y - 22.86})))
 	b.vcc(u.Pin("16"))
 	b.gnd(u.Pin("8"))
 	for i := 0; i < 4; i++ {
@@ -621,7 +639,7 @@ func (b *builder) keyboard() {
 func (b *builder) rowsAndInt() {
 	v := b.v
 	at := Pt{173.99, 195.58}
-	u := b.role("buf", b.Sym("74HC244", "DD7", "74AC244", at, icLabels(Pt{at.X, at.Y - 20.32})))
+	u := b.role("buf", b.Sym("74HC244", "DD7", "74AC244", at, b.icLabels(Pt{at.X, at.Y - 20.32})))
 	b.vcc(u.Pin("20"))
 	b.gnd(u.Pin("10"))
 	in := []string{"2", "4", "6", "8"}
@@ -756,7 +774,7 @@ func (b *builder) power() {
 	b.Wire(Pt{x, yg}, Pt{x, yg + 1.27})
 	b.gnd(Pt{x, yg + 1.27})
 	xs := x + 11.43 // последний фильтр — левее столбца конденсаторов клавиатуры (нумерация по столбцам)
-	n := 10 // по конденсатору на корпус DD
+	n := 10         // по конденсатору на корпус DD
 	if b.v.Decoder {
 		n = 11 // + дешифратор
 	}
@@ -793,7 +811,7 @@ func (b *builder) notes() {
 		fmt.Sprintf("3. Неиспользуемые входы к GND: %s выв. 8, 9, 11, 12; %s выв. %s; %s выв. 4, 5, 9, 10, 12, 13.", nor, and, andUnused, or),
 		fmt.Sprintf("4. %s, %s устанавливать рядом с ZQ1.", b.Roles["cX1"].Ref, b.Roles["cX2"].Ref),
 	}
-	b.Text(strings.Join(lines, "\n"), Pt{229.87, 206.375}, 1.5)
+	b.Text(strings.Join(lines, "\n"), Pt{229.87, 206.375}, b.Sheet.J.NoteFont)
 }
 
 // joinRefs — «DD3, DD6, DD10» в порядке номеров.
@@ -834,7 +852,7 @@ func refRanges(cs []*Comp) string {
 
 func (b *builder) decoder() {
 	at := Pt{330.2, 66.04}
-	u := b.role("dec", b.Sym("74HC138", "DD11", "74HC138", at, icLabels(Pt{at.X, at.Y - 15.24})))
+	u := b.role("dec", b.Sym("74HC138", "DD11", "74HC138", at, b.icLabels(Pt{at.X, at.Y - 15.24})))
 	b.vcc(u.Pin("16"))
 	b.gnd(u.Pin("8"))
 	// адрес A13..A15 → A0..A2

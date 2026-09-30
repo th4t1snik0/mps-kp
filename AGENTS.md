@@ -45,7 +45,7 @@
 
 ```sh
 make test                        # go test ./... (netlist-тест схемы требует kicad-cli, без него пропускается)
-make try G=А-12 M=14 FIO="Фамилия И.О."   # любой вариант → build/А-12-23/14/  (Y=23 — год набора)
+make try G=А-12 M=14 FIO="Фамилия И.О." [CHK="Михалин С.Н."] [STYLE=A|B|C|D]   # → build/А-12-23/14/  (Y=23 — год набора)
 make student S=<ник>             # из students/<ник>/variant.yaml → build/<группа>/<вариант>/
 make lib                         # пересобрать masters/lib/mps.kicad_sym (только при правке cmd/mpslib)
 scripts/render.sh build/<группа>/<вариант>  # только PDF/PNG/ERC по готовому .kicad_sch
@@ -58,10 +58,13 @@ macOS: `brew install --cask kicad && brew install go poppler`. Ubuntu: PPA `ppa:
 Ветку `results` пишет только CI (`scripts/publish.sh`), руками не править. Копия — на Яндекс-диск
 (`scripts/yadisk_upload.py`, `MPS-SHEMAS/<группа>/<вариант>/`; нужен секрет `YADISK_TOKEN`, см. README).
 
+Вид листа: стиль A–D (`internal/schgen/style.go`, по реальным работам; пусто — от ФИО) + «почерк» (`jitter.go`: сдвиги, шрифты,
+место меток — от «ФИО|группа|вариант»; `-plain` — без него). Электрика одинакова во всех вариантах, это проверяет тест.
+
 Что получается в `build/<группа>/<вариант>/` (группа с годом набора: `А-12-23`; в рамке — «Группа А-12-23, Вариант 14, Э3»,
 Разраб. — ФИО, Пров. — Михалин С.Н., дата — день сборки): `params.md` (все параметры варианта и ответы на п. 2.3 ТЗ), `params.json`,
 `vars.inc` (EQU/BIT для асма), `schematic.kicad_sch` (открывается в KiCad 10), `schematic.pdf/png`,
-`erc-summary.txt` (**должен быть пустым**).
+`erc-summary.txt` (**должен быть пустым**), `perechen.pdf` (ПЭ3 полный, для ПЗ1), `perechen-km1.pdf` (микросхемы и разъёмы, для КМ-1), `perechen.md`.
 
 **Текущее задание — ТЗ-2026** (`docs/source/ТЗ-2026.pdf`, разбор отличий — `docs/research/tz-2026.md`), таблица по умолчанию —
 `data/table-2026.yaml`. Прошлый год: `TABLE=data/table-2025.yaml`. Следующее ТЗ — `data/table-<год>.yaml`

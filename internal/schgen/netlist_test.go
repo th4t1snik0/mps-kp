@@ -41,6 +41,11 @@ func TestNetlist(t *testing.T) {
 	for i, v := range variants {
 		for _, st := range []string{"A", "B", "C", "D"} {
 			v.Style = Styles[st]
+			v.Jitter = nil
+			if st == "C" || st == "D" { // «почерк» на части прогонов — связи не должны зависеть от сдвигов и шрифтов
+				j := MakeJitter(fmt.Sprintf("тест|%d|%s", i, st), v.Rows)
+				v.Jitter = &j
+			}
 			t.Run(fmt.Sprintf("%dx%d-%d-%s", v.Cols, v.Rows, i, st), func(t *testing.T) {
 				dir := t.TempDir()
 				sch := filepath.Join(dir, "schematic.kicad_sch")
