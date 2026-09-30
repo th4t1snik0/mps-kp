@@ -29,6 +29,7 @@ type Sim struct {
 	// XTAL — частота кварца, Гц.
 	XTAL int
 	seq  int
+	raw  *os.File // SIM51_TRACE=<папка>: сырой диалог (отладка протокола)
 }
 
 // Binary — путь к s51 (переменная S51, иначе из PATH).
@@ -60,6 +61,10 @@ func Start(hexPath string, seed int) (*Sim, error) {
 		return nil, fmt.Errorf("запуск s51: %w", err)
 	}
 	s := &Sim{cmd: cmd, XTAL: 12_000_000}
+	if dir := os.Getenv("SIM51_TRACE"); dir != "" {
+		os.MkdirAll(dir, 0o755)
+		s.raw, _ = os.Create(fmt.Sprintf("%s/s51-%d.log", dir, port))
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		s.conn, err = net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -83,6 +88,9 @@ func Start(hexPath string, seed int) (*Sim, error) {
 
 // Close завершает симулятор.
 func (s *Sim) Close() {
+	if s.raw != nil {
+		s.raw.Close()
+	}
 	if s.conn != nil {
 		s.conn.Write([]byte("quit\n"))
 		s.conn.Close()
@@ -105,6 +113,9 @@ func (s *Sim) readUntil(sub string) (string, error) {
 		c, err := s.r.ReadByte()
 		if err != nil {
 			return string(buf), fmt.Errorf("s51: ждали %q: %w; получено: %q", sub, err, tail(string(buf)))
+		}
+		if s.raw != nil {
+			s.raw.Write([]byte{c})
 		}
 		if c != 0 {
 			buf = append(buf, c)
@@ -136,6 +147,9 @@ func (s *Sim) read() (string, error) {
 func (s *Sim) sync(prefix string) (string, error) {
 	s.seq++
 	mark := fmt.Sprint(900000000 + s.seq)
+	if s.raw != nil {
+		fmt.Fprintf(s.raw, "\n>>>> expr %s\n", mark)
+	}
 	if _, err := s.conn.Write([]byte("expr " + mark + "\n")); err != nil {
 		return prefix, err
 	}
@@ -148,6 +162,9 @@ func (s *Sim) sync(prefix string) (string, error) {
 
 // Cmd выполняет команду консоли и возвращает вывод (без эха и приглашений).
 func (s *Sim) Cmd(c string) (string, error) {
+	if s.raw != nil {
+		fmt.Fprintf(s.raw, "\n>>>> %s\n", c)
+	}
 	if _, err := s.conn.Write([]byte(c + "\n")); err != nil {
 		return "", err
 	}
