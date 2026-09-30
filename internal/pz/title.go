@@ -95,7 +95,7 @@ func (d *Doc) TitleA(t TitleInfo, date string) {
 	var x strings.Builder
 	x.WriteString(tp("center", 0, 0, false, 14, run("Федеральное государственное бюджетное образовательное учреждение высшего образования")))
 	x.WriteString(tp("center", 0, 0, false, 14, run("«Национальный исследовательский университет «МЭИ»")))
-	x.WriteString(tp("center", 62, 0, true, 14, run("КУРСОВАЯ  РАБОТА")))
+	x.WriteString(tp("center", 50, 0, true, 14, run("КУРСОВАЯ  РАБОТА")))
 	x.WriteString(tp("center", 4, 0, false, 14, run("по курсу \"Микропроцессорные системы\"")))
 	x.WriteString(tp("center", 22, 0, false, 16, run("Проектирование микропроцессорной системы на базе МК i8051")))
 	x.WriteString(tp("center", 8, 0, true, 14, run(t.Doc)))
@@ -113,7 +113,7 @@ func (d *Doc) TitleA(t TitleInfo, date string) {
 	lab(2, "Дата:", date)
 	lab(8, "Проверил:", t.Checker)
 	lab(2, "Дата:", "")
-	x.WriteString(tp("center", 52, 0, false, 14, run(fmt.Sprintf("Москва, %d", t.Year))))
+	x.WriteString(tp("center", 34, 0, false, 14, run(fmt.Sprintf("Москва, %d", t.Year))))
 	x.WriteString(`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`)
 	d.w("\n```{=openxml}\n%s\n```\n\n", x.String())
 }

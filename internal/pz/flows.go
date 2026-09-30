@@ -9,23 +9,18 @@ import (
 //go:embed flows/*.flow
 var flowFS embed.FS
 
-// DefaultFlows — заготовки схем алгоритмов под вариант: инициализация и алгоритмы трёх программ.
-// Студент подгоняет их под свой код (схема должна соответствовать программе).
+// DefaultFlows — заготовки схем всех алгоритмов из ТЗ-2026 (разд. 2.2: инициализация, индикация, строб Y1, Y2 со стробом,
+// буфер — чтение и запись, клавиатура, обработчики прерываний) + основной цикл. Схемы процедур, которые есть в коде студента,
+// он подгоняет под свой код (схема обязана соответствовать программе); остальные — алгоритмы полной системы.
 func DefaultFlows(p *variant.Params) map[string][]byte {
-	names := []string{"1-init", "2-kbscan"}
-	if p.M%2 == 0 {
-		names = append(names, "3-bufread")
-	} else {
-		names = append(names, "3-bufwrite")
-	}
-	names = append(names, [][]string{{"4-ind", "5-t0ind"}, {"4-y1", "5-t0y1"}, {"4-y2", "5-y2isr"}}[p.M%3]...)
 	out := map[string][]byte{}
-	for _, n := range names {
-		b, err := flowFS.ReadFile("flows/" + n + ".flow")
+	ents, _ := flowFS.ReadDir("flows")
+	for _, e := range ents {
+		b, err := flowFS.ReadFile("flows/" + e.Name())
 		if err != nil {
 			panic(err)
 		}
-		out[n+".flow"] = b
+		out[e.Name()] = b
 	}
 	return out
 }

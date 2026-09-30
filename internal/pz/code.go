@@ -18,7 +18,7 @@ var (
 	reVecJmp = regexp.MustCompile(`(?i)^\s*[la]?jmp\s+([A-Za-z_]\w*)`)
 	reOrg    = regexp.MustCompile(`(?i)^\s*org\s+([0-9a-f]+)h?\b`)
 	reLabel  = regexp.MustCompile(`^\s*([A-Za-z_]\w*)\s*:`)
-	reField  = regexp.MustCompile(`(Вход|Выход|Портит|Сохраняет)\s*:`)
+	reField  = regexp.MustCompile(`(Назначение|Входные параметры|Входные данные|Выходные параметры|Выходные данные|Используемые регистры|Вход|Выход|Портит|Сохраняет)\s*:`)
 )
 
 var vectors = map[string]string{"03": "INT0", "0B": "Timer0", "13": "INT1", "1B": "Timer1", "23": "UART"}
@@ -102,19 +102,23 @@ func parseHeader(txt, name string) Proc {
 			head = strings.TrimSpace(head[len(pre):])
 		}
 	}
-	p.Purpose = strings.TrimRight(head, " .")
+	p.Purpose = strings.Trim(strings.TrimRight(head, " ."), "=-; ")
 	for k, m := range idx {
 		end := len(txt)
 		if k+1 < len(idx) {
 			end = idx[k+1][0]
 		}
-		v := strings.TrimRight(strings.TrimSpace(txt[m[1]:end]), " .")
+		v := strings.Trim(strings.TrimSpace(txt[m[1]:end]), " .=-*")
 		switch txt[m[2]:m[3]] {
-		case "Вход":
+		case "Назначение":
+			if p.Purpose == "" {
+				p.Purpose = v
+			}
+		case "Вход", "Входные параметры", "Входные данные":
 			p.In = v
-		case "Выход":
+		case "Выход", "Выходные параметры", "Выходные данные":
 			p.Out = v
-		case "Портит", "Сохраняет":
+		case "Портит", "Сохраняет", "Используемые регистры":
 			if p.Clobbers != "" {
 				p.Clobbers += "; "
 			}

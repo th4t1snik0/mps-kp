@@ -113,7 +113,7 @@ func main() {
 			}
 			// натуральный размер (8 px на мм), не шире поля страницы
 			wcm := float64(img.Bounds().Dx()) / 8 / 10
-			in.Flows = append(in.Flows, pz.FlowFig{ID: id, Title: title, File: pngName, WidthCm: min(wcm, 17)})
+			in.Flows = append(in.Flows, pz.FlowFig{ID: id, Title: title, File: pngName, WidthCm: min(wcm, 17), Text: flow.Describe(c)})
 		}
 		pz.BuildPZ2(d, in)
 	case "pz1":

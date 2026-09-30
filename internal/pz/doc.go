@@ -131,6 +131,9 @@ func (d *Doc) NextFig() string { return d.label(d.fig + 1) }
 func (d *Doc) NextTab() string { return d.label(d.tab + 1) }
 
 func (d *Doc) label(n int) string {
+	if d.appendixNo > 0 {
+		return fmt.Sprintf("%s.%d", appLetters[d.appendixNo-1], n)
+	}
 	if d.Style.FigBySection && d.h1 > 0 {
 		return fmt.Sprintf("%d.%d", d.h1, n)
 	}
@@ -139,6 +142,11 @@ func (d *Doc) label(n int) string {
 
 // Table — таблица с подписью над ней («Таблица N — …» или «Таблица N» справа + название по центру). Возвращает номер.
 func (d *Doc) Table(caption string, head []string, rows [][]string) string {
+	return d.TableW(caption, head, rows, nil)
+}
+
+// TableW — таблица с относительными ширинами колонок (например 20/110/10/45 для перечня по ГОСТ 2.701).
+func (d *Doc) TableW(caption string, head []string, rows [][]string, widths []int) string {
 	d.tab++
 	n := d.label(d.tab)
 	if d.Style.TabRight {
@@ -157,8 +165,12 @@ func (d *Doc) Table(caption string, head []string, rows [][]string) string {
 	}
 	line(head)
 	d.w("|")
-	for range head {
-		d.w("---|")
+	for i := range head {
+		n := 10
+		if i < len(widths) {
+			n = widths[i]
+		}
+		d.w("%s|", strings.Repeat("-", max(3, n)))
 	}
 	d.w("\n")
 	for _, r := range rows {
@@ -237,15 +249,29 @@ func Num(v float64, prec int) string {
 	return strings.Replace(fmt.Sprintf("%.*f", prec, v), ".", ",", 1)
 }
 
+// FillOr — место с готовым текстом по умолчанию: если студент написал свой раздел — берётся он, иначе — generated
+// (не подсвечивается и не считается незаполненным; в файле студента раздел остаётся, чтобы заменить при желании).
+func (d *Doc) FillOr(id, title, hint, generated string) {
+	txt := strings.TrimSpace(d.Student[id])
+	d.Fills = append(d.Fills, Fill{ID: id, Title: title, Hint: hint + " (необязательно: без текста в документ идёт пересказ схемы)", Done: true})
+	if txt == "" {
+		txt = esc(generated)
+	}
+	d.w("\n%s\n\n", txt)
+}
+
 // Appendix — «ПРИЛОЖЕНИЕ А» с новой страницы.
 func (d *Doc) Appendix(title string) string {
-	letter := []string{"А", "Б", "В", "Г", "Д", "Е", "Ж", "И", "К"}[d.appendixNo]
+	letter := appLetters[d.appendixNo]
 	d.appendixNo++
+	d.fig, d.tab = 0, 0
 	d.w("\n# ПРИЛОЖЕНИЕ %s {-}\n\n", letter)
 	d.toc = append(d.toc, tocEntry{1, "ПРИЛОЖЕНИЕ " + letter + ". " + title})
 	d.Styled("Center", "**"+esc(title)+"**")
 	return letter
 }
+
+var appLetters = []string{"А", "Б", "В", "Г", "Д", "Е", "Ж", "И", "К"}
 
 // Markdown — итоговый текст.
 func (d *Doc) Markdown() string { return strings.Replace(d.b.String(), tocMarker, d.tocXML(), 1) }

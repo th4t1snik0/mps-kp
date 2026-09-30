@@ -30,7 +30,8 @@ func Build(d *Doc, out string) error {
 	if err := os.WriteFile(md, []byte(d.Markdown()), 0o644); err != nil {
 		return err
 	}
-	args := []string{md, "-f", "markdown-implicit_figures+implicit_figures", "-o", out, "--reference-doc", refPath, "--resource-path", d.Dir}
+	args := []string{md, "-f", "markdown-implicit_figures+implicit_figures", "-o", out, "--reference-doc", refPath, "--resource-path", d.Dir,
+		"--columns=40"} // ширины колонок таблиц — по разделителям (иначе короткие таблицы верстаются «по содержимому»)
 	cmd := exec.Command(Pandoc(), args...)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("pandoc: %v\n%s", err, b)
