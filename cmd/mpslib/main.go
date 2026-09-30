@@ -54,6 +54,7 @@ func main() {
 
 func run(dir, out string, dump bool) error {
 	libs := map[string]*schgen.Lib{}
+	made := map[string]*schgen.Node{}
 	root := schgen.L("kicad_symbol_lib",
 		schgen.L("version", schgen.A("20251024")),
 		schgen.L("generator", schgen.Q("mpslib")),
@@ -107,6 +108,24 @@ func run(dir, out string, dump bool) error {
 			continue
 		}
 		root.Kids = append(root.Kids, sym)
+		made[s.as] = sym
+	}
+	if dump {
+		return nil
+	}
+	// ГОСТ-варианты (стили C/D): те же выводы, другой корпус
+	for _, g := range gostICs {
+		c := made[g.base].Clone()
+		c.Kids[1] = schgen.Q(g.base)
+		renameSym(c, g.base, g.base+"_G")
+		gostifyIC(c, g)
+		root.Kids = append(root.Kids, c)
+	}
+	for _, g := range gostGates {
+		c := made[g.base].Clone()
+		renameSym(c, g.base, g.base+"_G")
+		gostifyGate(c, g)
+		root.Kids = append(root.Kids, c)
 	}
 	if dump {
 		return nil
@@ -148,6 +167,7 @@ func idt7005(sym *schgen.Node) {
 				k.Kids[1] = schgen.A("power_in")
 				x := map[string]float64{"5": -3.81, "9": -1.27, "24": 1.27, "41": 3.81}[k.Find("number").Arg(0)]
 				k.Find("at").Kids[1] = schgen.F(x)
+				k.Remove(func(h *schgen.Node) bool { return h.Head() == "hide" })
 			}
 			if nm != nil && strings.Contains(nm.Arg(0), "BUSY") {
 				k.Kids[1] = schgen.A("input")
@@ -224,5 +244,13 @@ func hidePower(sym *schgen.Node) {
 			sym.Kids = append(append(sym.Kids[:i:i], sym.Kids[i+1:]...), k)
 			break
 		}
+	}
+}
+
+// renameSym — новое имя символа и его подсимволов (NAME_u_s).
+func renameSym(sym *schgen.Node, old, nu string) {
+	sym.Kids[1] = schgen.Q(nu)
+	for _, k := range sym.All("symbol") {
+		k.Kids[1] = schgen.Q(nu + strings.TrimPrefix(k.Arg(0), old))
 	}
 }

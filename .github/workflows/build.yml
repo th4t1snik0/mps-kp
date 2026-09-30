@@ -38,6 +38,10 @@ on:
         description: "Фамилия И.О. преподавателя — в рамку (Пров.)"
         required: false
         default: "Михалин С.Н."
+      style:
+        description: "Стиль листа: A (как Рязанцев 2025), B (Осипова 2025), C (Сорокина 2023), D (Базарнов 2023); пусто — по ФИО"
+        required: false
+        default: ""
       year:
         description: "Год набора группы: А-12 → А-12-<год>"
         required: false
@@ -79,7 +83,8 @@ jobs:
           FIO: ${{ inputs.fio }}
           CHK: ${{ inputs.checker }}
           Y: ${{ inputs.year }}
-        run: make try G="$G" M="$M" FIO="$FIO" CHK="${CHK:-Михалин С.Н.}" Y="${Y:-23}"
+          STYLE: ${{ inputs.style }}
+        run: make try G="$G" M="$M" FIO="$FIO" CHK="${CHK:-Михалин С.Н.}" Y="${Y:-23}" STYLE="$STYLE"
 
       - name: Все студенты
         if: github.event_name == 'push' || inputs.group == ''

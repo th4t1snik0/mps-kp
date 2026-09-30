@@ -39,32 +39,41 @@ func TestNetlist(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, v := range variants {
-		t.Run(fmt.Sprintf("%dx%d-%d", v.Cols, v.Rows, i), func(t *testing.T) {
-			dir := t.TempDir()
-			sch := filepath.Join(dir, "schematic.kicad_sch")
-			sh := Build(lib, v, "test")
-			if err := os.WriteFile(sch, []byte(sh.String()), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			os.WriteFile(filepath.Join(dir, "schematic.kicad_pro"), []byte(Project), 0o644)
-			net := filepath.Join(dir, "n.net")
-			if out, err := exec.Command(cli, "sch", "export", "netlist", "-o", net, sch).CombinedOutput(); err != nil {
-				t.Fatalf("%v: %s", err, out)
+		for _, st := range []string{"A", "B", "C", "D"} {
+			v.Style = Styles[st]
+			t.Run(fmt.Sprintf("%dx%d-%d-%s", v.Cols, v.Rows, i, st), func(t *testing.T) {
+				dir := t.TempDir()
+				sch := filepath.Join(dir, "schematic.kicad_sch")
+				sh := Build(lib, v, "test")
+				if err := os.WriteFile(sch, []byte(sh.String()), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				os.WriteFile(filepath.Join(dir, "schematic.kicad_pro"), []byte(Project), 0o644)
+				net := filepath.Join(dir, "n.net")
+				if out, err := exec.Command(cli, "sch", "export", "netlist", "-o", net, sch).CombinedOutput(); err != nil {
+					t.Fatalf("%v: %s", err, out)
+				}
+				// ERC: любое нарушение — ошибка (правила, которые для учебной схемы не ошибка, выключены в Project)
+			rpt := filepath.Join(dir, "erc.rpt")
+			if out, err := exec.Command(cli, "sch", "erc", "--exit-code-violations", "-o", rpt, sch).CombinedOutput(); err != nil {
+				b, _ := os.ReadFile(rpt)
+				t.Errorf("ERC: %v\n%s\n%s", err, out, b)
 			}
 			nets := readNets(t, net)
-			for name, want := range expected(v, sh.Roles) {
-				got := nets.byPin[want[0]]
-				if strings.Join(nets.members[got], " ") != strings.Join(sorted(want), " ") {
-					t.Errorf("цепь %s:\n  ждём %v\n  есть %v (%s)", name, sorted(want), nets.members[got], got)
+				for name, want := range expected(v, sh.Roles) {
+					got := nets.byPin[want[0]]
+					if strings.Join(nets.members[got], " ") != strings.Join(sorted(want), " ") {
+						t.Errorf("цепь %s:\n  ждём %v\n  есть %v (%s)", name, sorted(want), nets.members[got], got)
+					}
 				}
-			}
-			// ни один вывод микросхем не висит в цепи из одного вывода (кроме NC)
-			for n, m := range nets.members {
-				if len(m) == 1 && !strings.HasPrefix(n, "unconnected-") {
-					t.Errorf("цепь %s из одного вывода %v", n, m)
+				// ни один вывод микросхем не висит в цепи из одного вывода (кроме NC)
+				for n, m := range nets.members {
+					if len(m) == 1 && !strings.HasPrefix(n, "unconnected-") {
+						t.Errorf("цепь %s из одного вывода %v", n, m)
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }
 
@@ -111,6 +120,7 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		return fmt.Sprintf("%s.%v", c.Ref, pin)
 	}
 	mp := func(p string) string { return r("mcu", mcuPin(p)) }
+	rc := func(role string, k int) string { return r(role, roles[role].PinBase+k) }
 	e := map[string][]string{}
 	dl := []string{"63", "64", "1", "2", "3", "4", "6", "7"}
 	dr := []string{"10", "11", "12", "14", "15", "16", "17", "18"}
@@ -126,8 +136,8 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		}
 		e[fmt.Sprintf("AD%d", i)] = m
 		e[fmt.Sprintf("A%d", i)] = []string{r("latchA", 19-i), r("idt", 44+i), r("idt", 37-i)}
-		e[fmt.Sprintf("X2_%d", i)] = []string{r("idt", dr[i]), r("xsX2", 2+i)}
-		e[fmt.Sprintf("Y2_%d", i)] = []string{r("latchY2", 19-i), r("xsY", 3+i)}
+		e[fmt.Sprintf("X2_%d", i)] = []string{r("idt", dr[i]), rc("xsX2", 2+i)}
+		e[fmt.Sprintf("Y2_%d", i)] = []string{r("latchY2", 19-i), rc("xsY", 3+i)}
 	}
 	for i := 8; i <= 10; i++ {
 		e[fmt.Sprintf("A%d", i)] = []string{r("mcu", 13+i), r("idt", 44+i), r("idt", 37-i)}
@@ -150,8 +160,8 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 	e["WR"] = []string{r("mcu", 16), r("norY2", 3), r("norInd", 6), r("kb173", 7), r("idt", 20)}
 	e["RD"] = []string{r("mcu", 17), r("idt", 62), r("or", 2)}
 	e["ALE"] = []string{r("mcu", 30), r("latchA", 11)}
-	e["Y1"] = []string{r("mcu", mcuPin(v.Y1)), r("xsY", 1)}
-	e["Y2"] = []string{r("mcu", mcuPin(v.Y2)), r("xsY", 2)}
+	e["Y1"] = []string{r("mcu", mcuPin(v.Y1)), rc("xsY", 1)}
+	e["Y2"] = []string{r("mcu", mcuPin(v.Y2)), rc("xsY", 2)}
 	intPin := map[string]string{"INT0": "12", "INT1": "13"}
 	andOut := "12"
 	andIn := []string{"1", "2", "13"}
@@ -159,7 +169,7 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		andOut, andIn = "6", []string{"1", "2", "4", "5"}
 	}
 	e["INTkb"] = []string{r("mcu", intPin[v.KbInt]), r("and", andOut)}
-	e["INTx2"] = []string{r("mcu", intPin[v.X2Int]), r("xsX2", 1)}
+	e["INTx2"] = []string{r("mcu", intPin[v.X2Int]), rc("xsX2", 1)}
 	e["OE244"] = []string{r("or", 3), r("buf", 1), r("buf", 19)}
 	e["LoadY2"] = []string{r("norY2", 1), r("latchY2", 11)}
 	e["LoadInd"] = []string{r("norInd", 4), r("latchInd", 11)}

@@ -18,6 +18,7 @@ type Variant struct {
 	Decoder    bool   // ТЗ-2026: CS — выходы 74HC138 (A13..A15, E2 = CS_EN); CS.* = "Y0".."Y7"
 	CSEn       string // вывод МК CS_EN (P3.4)
 	Filter     string // номинал фильтров на корпус: «68 н» (2025) / «33 н» (2026)
+	Style      Style  // вид листа (A–D), см. style.go
 	Date       string
 	Student    string
 	Checker    string
@@ -65,9 +66,28 @@ const (
 type builder struct {
 	*Sheet
 	v        Variant
+	connBase map[string]int
 	refs     map[string]int
 	filterCs []*Comp
 }
+
+// gostSyms — символы, у которых есть ГОСТ-вариант «_G» (cmd/mpslib/gost.go).
+var gostGateSyms = map[string]bool{"74HC02": true, "74HC32": true, "74HC11": true, "74HC21": true}
+var gostICSyms = map[string]bool{"74HC573": true, "74HC173": true, "74HC244": true, "74HC138": true, "IDT7005": true, "AT89S53": true}
+
+// Sym ставит символ с учётом стиля: ГОСТ-вариант, если стиль его требует.
+func (b *builder) Sym(sym, ref, value string, at Pt, o SymOpt) *Comp {
+	st := b.v.Style
+	if (st.GostGates && gostGateSyms[sym]) || (st.GostICs && gostICSyms[sym]) {
+		if _, ok := b.lib.Syms[sym+"_G"]; ok {
+			sym += "_G"
+		}
+	}
+	return b.Sheet.Sym(sym, ref, value, at, o)
+}
+
+// cp — контакт k (с 1) разъёма c с учётом сквозной нумерации частей.
+func cp(c *Comp, k int) Pt { return c.Pin(strconv.Itoa(c.PinBase + k)) }
 
 // role запоминает элемент под именем роли: после перенумерации по ГОСТ
 // по ролям пишется примечание и проверяется netlist.
@@ -133,6 +153,10 @@ func icLabels(vccTip Pt) SymOpt {
 func Build(lib *Lib, v Variant, seed string) *Sheet {
 	b := &builder{Sheet: NewSheet(lib, seed), v: v, refs: map[string]int{}}
 	b.Roles = map[string]*Comp{}
+	if b.v.Style.Name == "" {
+		b.v.Style = Styles["A"]
+	}
+	b.SetPerpEntries(b.v.Style.Perp)
 	setCSNames(v.Decoder)
 	if v.Filter == "" {
 		v.Filter = "68 н"
@@ -403,58 +427,77 @@ func (b *builder) connectors() {
 		x2 = append(x2, ConnPin{Signal: fmt.Sprintf("X2_%d", i)})
 	}
 	x2 = append(x2, ConnPin{Signal: "GND"})
-	b.lib.AddConn("CONN_X2", x2)
 	y := []ConnPin{{Signal: "~{Y1stb}"}, {Signal: "~{Y2stb}"}}
 	for i := 0; i < 8; i++ {
 		y = append(y, ConnPin{Signal: fmt.Sprintf("Y2_%d", i)})
 	}
 	y = append(y, ConnPin{Signal: "GND"})
-	b.lib.AddConn("CONN_Y", y)
-	b.lib.AddConn("CONN_PWR", []ConnPin{{Signal: "Vcc", Power: true}, {Signal: "GND", Power: true}})
+	pwr := []ConnPin{{Signal: "Vcc", Power: true}, {Signal: "GND", Power: true}}
+	cs := b.v.Style.Conn
+	if b.v.Style.Sections {
+		// один XS1: XS1.1 — X2, XS1.2 — Y, XS1.3 — питание; нумерация контактов сквозная
+		b.lib.AddConn("CONN_XS", [][]ConnPin{x2, y, pwr}, cs)
+		b.connBase = map[string]int{"x2": 0, "y": len(x2), "pwr": len(x2) + len(y)}
+		return
+	}
+	b.lib.AddConn("CONN_X2", [][]ConnPin{x2}, cs)
+	b.lib.AddConn("CONN_Y", [][]ConnPin{y}, cs)
+	b.lib.AddConn("CONN_PWR", [][]ConnPin{pwr}, cs)
+}
+
+// conn ставит разъём (или его часть при Sections).
+func (b *builder) conn(role, which, sym, ref string, at Pt) *Comp {
+	if b.v.Style.Sections {
+		unit := map[string]int{"x2": 1, "y": 2, "pwr": 3}[which]
+		c := b.role(role, b.Sym("CONN_XS", "XS1", "", at, SymOpt{HideVal: true, Unit: unit}))
+		c.PinBase = b.connBase[which]
+		return c
+	}
+	return b.role(role, b.Sym(sym, ref, "", at, SymOpt{HideVal: true}))
 }
 
 func (b *builder) placeConnXY() {
 	const bx = 250.19 // шины к разъёмам
 	// XS2: строб X2 → вход прерывания, данные X2 → правый порт IDT
-	c := b.role("xsX2", b.Sym("CONN_X2", "XS2", "", Pt{xConn, yXS2}, SymOpt{HideVal: true}))
-	stb := c.Pin("1")
+	c := b.conn("xsX2", "x2", "CONN_X2", "XS2", Pt{xConn, yXS2})
+	stb := cp(c, 1)
 	e := Pt{xBR + 2.54, stb.Y}
 	b.Wire(stb, e)
 	b.BusEntry(Pt{xBR, stb.Y + 2.54}, 2.54, -2.54)
 	b.Label("~{"+b.v.X2Int+"}", e, false)
 	for i := 0; i < 8; i++ {
-		p := c.Pin(strconv.Itoa(2 + i))
+		p := cp(c, 2+i)
 		b.Wire(p, Pt{bx + 2.54, p.Y})
 		b.BusEntry(Pt{bx, p.Y + 2.54}, 2.54, -2.54)
 		b.Label(fmt.Sprintf("X2_%d", i), Pt{bx + 2.54, p.Y}, false)
 	}
-	gp := c.Pin("10")
+	gp := cp(c, 10)
 	b.Wire(gp, Pt{gp.X - 1.27, gp.Y}, Pt{gp.X - 1.27, gp.Y + 1.27})
 	b.gnd(Pt{gp.X - 1.27, gp.Y + 1.27})
-	top := c.Pin("2").Y + 2.54
+	top := cp(c, 2).Y + 2.54
 	b.Bus(Pt{bx, top}, Pt{bx, 99.06}, Pt{xBR, 99.06})
 
 	// XS3: стробы Y1/Y2 с P1, данные Y2 с DD5
-	c = b.role("xsY", b.Sym("CONN_Y", "XS3", "", Pt{xConn, yXS3}, SymOpt{HideVal: true}))
+	c = b.conn("xsY", "y", "CONN_Y", "XS3", Pt{xConn, yXS3})
 	for i, n := range []string{nY1, nY2} {
-		p := c.Pin(strconv.Itoa(1 + i))
+		p := cp(c, 1+i)
 		e := Pt{xBR + 2.54, p.Y}
 		b.Wire(p, e)
 		b.BusEntry(Pt{xBR, p.Y + 2.54}, 2.54, -2.54)
 		b.Label(n, e, false)
 	}
 	for i := 0; i < 8; i++ {
-		p := c.Pin(strconv.Itoa(3 + i))
+		p := cp(c, 3+i)
 		b.Wire(p, Pt{bx + 2.54, p.Y})
 		b.BusEntry(Pt{bx, p.Y + 2.54}, 2.54, -2.54)
 		b.Label(fmt.Sprintf("Y2_%d", i), Pt{bx + 2.54, p.Y}, false)
 	}
-	gp = c.Pin("11")
+	gp = cp(c, 11)
 	b.Wire(gp, Pt{gp.X - 1.27, gp.Y}, Pt{gp.X - 1.27, gp.Y + 1.27})
 	b.gnd(Pt{gp.X - 1.27, gp.Y + 1.27})
 	// шина Y2: от DD5 вниз, вправо под IDT, вверх к разъёму
 	b.Bus(Pt{162.56, 96.52 + 2.54}, Pt{162.56, 132.08}, Pt{bx, 132.08})
-	b.Bus(Pt{bx, c.Pin("3").Y + 2.54}, Pt{bx, c.Pin("10").Y + 2.54})
+	b.Bus(Pt{bx, cp(c, 3).Y + 2.54}, Pt{bx, cp(c, 10).Y + 2.54})
 }
 
 // ---------------------------------------------------------------- клавиатура
@@ -728,9 +771,9 @@ func (b *builder) power() {
 	last := xs + float64(n-1)*8.89
 	b.Wire(Pt{x, yv}, Pt{last, yv})
 	b.Wire(Pt{x, yg}, Pt{last, yg})
-	xc := b.role("xsPwr", b.Sym("CONN_PWR", "XS1", "", Pt{175.26, yv}, SymOpt{HideVal: true}))
-	b.Wire(Pt{last, yv}, xc.Pin("1"))
-	b.Wire(Pt{last, yg}, Pt{168.91, yg}, Pt{168.91, xc.Pin("2").Y}, xc.Pin("2"))
+	xc := b.conn("xsPwr", "pwr", "CONN_PWR", "XS1", Pt{175.26, yv})
+	b.Wire(Pt{last, yv}, cp(xc, 1))
+	b.Wire(Pt{last, yg}, Pt{168.91, yg}, Pt{168.91, cp(xc, 2).Y}, cp(xc, 2))
 
 	b.placeConnXY()
 }
@@ -827,7 +870,24 @@ func (b *builder) decoder() {
 
 // ---------------------------------------------------------------- шины
 
+func (b *builder) busNames() {
+	st := b.v.Style
+	t := func(s string, at Pt) { b.Text(s, at, 2.5) }
+	switch {
+	case st.BusNames: // ГОСТ: шины Bx
+		t("B1", Pt{xBM + 1.27, yTop + 1.27})
+		t("B1", Pt{xBD + 1.27, yH2 + 1.27})
+		t("B2", Pt{163.83, 128.27})
+		t("B3", Pt{88.9, kbColY - 3.81})
+		t("B4", Pt{259.08 + 1.27, 148.59})
+		t("B5", Pt{281.94 + 1.27, 148.59})
+	case st.MainBus != "":
+		t(st.MainBus, Pt{xBM + 1.27, yTop + 1.27})
+	}
+}
+
 func (b *builder) buses() {
+	b.busNames()
 	b.Bus(Pt{xBL, 101.6}, Pt{xBL, yTop}, Pt{xBR, yTop}, Pt{xBR, 121.92})
 	b.Bus(Pt{xBM, yTop}, Pt{xBM, yH2})
 	b.Bus(Pt{xBI, yTop}, Pt{xBI, 121.92})

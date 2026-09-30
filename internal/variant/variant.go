@@ -122,6 +122,7 @@ type Student struct {
 	Name      string `yaml:"name"`    // «Рязанцев И.В.»
 	Checker   string `yaml:"checker"` // «Михалин С.Н.»
 	Date      string `yaml:"date"`
+	Style     string `yaml:"style"` // вид листа A|B|C|D; пусто — по ФИО
 }
 
 func LoadStudent(path string) (*Student, error) {

@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"mpskp/internal/render"
@@ -33,11 +34,12 @@ func main() {
 		chk    = flag.String("checker", "", "Фамилия И.О. преподавателя (по умолчанию Михалин С.Н.)")
 		year   = flag.String("year", "23", "год набора группы: А-12 → А-12-<year>")
 		doRend = flag.Bool("render", false, "после генерации запустить scripts/render.sh (PDF, PNG, ERC)")
+		style  = flag.String("style", "", "стиль листа A|B|C|D (пусто — по ФИО, см. internal/schgen/style.go)")
 		lib    = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
 		wks    = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
 	)
 	flag.Parse()
-	dir, err := run(*table, *stud, *group, *m, *name, *chk, *year, *root, *out, *lib, *wks)
+	dir, err := run(*table, *stud, *group, *m, *name, *chk, *style, *year, *root, *out, *lib, *wks)
 	if err == nil && *doRend {
 		cmd := exec.Command("scripts/render.sh", dir)
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
@@ -49,7 +51,7 @@ func main() {
 	}
 }
 
-func run(tablePath, studPath, group string, m int, name, checker, year, root, out, libPath, wksPath string) (string, error) {
+func run(tablePath, studPath, group string, m int, name, checker, style, year, root, out, libPath, wksPath string) (string, error) {
 	tb, err := variant.LoadTable(tablePath)
 	if err != nil {
 		return "", err
@@ -67,6 +69,9 @@ func run(tablePath, studPath, group string, m int, name, checker, year, root, ou
 	}
 	if checker != "" {
 		st.Checker = checker
+	}
+	if style != "" {
+		st.Style = style
 	}
 	st.Defaults(year, time.Now())
 	if out == "" {
@@ -114,12 +119,16 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 		},
 		Y1: p.Y1Pin, Y2: p.Y2Pin, KbInt: p.KbInt, X2Int: p.X2Int,
 		Decoder: p.CSMode == "decoder", CSEn: p.CSEnPin, Filter: p.FilterCap,
-		Date: st.Date, Student: st.Name, Checker: st.Checker,
+		Style: schgen.PickStyle(st.Style, st.Name),
+		Date:  st.Date, Student: st.Name, Checker: st.Checker,
 	}
 	sh := schgen.Build(lib, v, fmt.Sprintf("%s-%d", p.Group, p.M))
 	writes := map[string]string{
 		"schematic.kicad_sch": sh.String(),
 		"schematic.kicad_pro": schgen.Project,
+	}
+	if v.Style.FullFrame {
+		wksPath = strings.TrimSuffix(wksPath, ".kicad_wks") + "_full.kicad_wks"
 	}
 	w, err := os.ReadFile(wksPath)
 	if err != nil {
@@ -136,6 +145,6 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 		}
 	}
 	ind := map[bool]string{true: "общий анод", false: "общий катод"}[v.Anode]
-	fmt.Printf("  схема: %s (клавиатура %dx%d, %s)\n", filepath.Join(out, "schematic.kicad_sch"), p.Cols, p.Rows, ind)
+	fmt.Printf("  схема: %s (стиль %s, клавиатура %dx%d, %s)\n", filepath.Join(out, "schematic.kicad_sch"), v.Style.Name, p.Cols, p.Rows, ind)
 	return nil
 }

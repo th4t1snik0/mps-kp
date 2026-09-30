@@ -28,6 +28,9 @@ type Sheet struct {
 	rootID  string
 	project string
 	Roles   map[string]*Comp // роль → элемент (заполняет построитель)
+	buses   [][2]Pt
+	entries [][2]Pt
+	perp    bool
 }
 
 type TitleBlock struct {
@@ -57,6 +60,7 @@ type Comp struct {
 	At         Pt
 	Rot        int
 	Unit       int
+	PinBase    int // сквозная нумерация контактов у составного разъёма (часть XS1.2 начинается с 11)
 	pins       map[string]Pt
 	node       *Node
 }
@@ -259,21 +263,83 @@ func dist(a, b Pt) float64 { return abs(a.X-b.X) + abs(a.Y-b.Y) }
 // Bus — ломаная шины.
 func (s *Sheet) Bus(pts ...Pt) {
 	for i := 0; i+1 < len(pts); i++ {
-		a, b := pts[i], pts[i+1]
-		s.items = append(s.items, L("bus",
-			L("pts", L("xy", F(a.X), F(a.Y)), L("xy", F(b.X), F(b.Y))),
-			L("stroke", L("width", F(0)), L("type", A("default"))),
-			L("uuid", Q(s.uuid()))))
+		s.buses = append(s.buses, [2]Pt{pts[i], pts[i+1]})
 	}
 }
 
-// BusEntry — наклонный отвод от точки at на (dx, dy).
+// BusEntry — наклонный отвод от точки at на (dx, dy) (один конец — на шине, другой — на проводе).
 func (s *Sheet) BusEntry(at Pt, dx, dy float64) {
-	s.items = append(s.items, L("bus_entry",
-		L("at", F(at.X), F(at.Y)),
-		L("size", F(dx), F(dy)),
-		L("stroke", L("width", F(0)), L("type", A("default"))),
-		L("uuid", Q(s.uuid()))))
+	s.entries = append(s.entries, [2]Pt{at, at.Add(dx, dy)})
+}
+
+// Perp — отводы к шине перпендикулярные (Т-образно, 90°) вместо 45°.
+func (s *Sheet) SetPerpEntries(on bool) { s.perp = on }
+
+// emitBuses выводит шины и отводы. В режиме 90° конец отвода на шине сдвигается к перпендикуляру
+// от конца на проводе, а шина при необходимости удлиняется до нового конца.
+func (s *Sheet) emitBuses() {
+	onBus := func(p Pt) (int, bool) {
+		for i, b := range s.buses {
+			if p.eq(b[0]) || p.eq(b[1]) || onSegInner(b[0], b[1], p) {
+				return i, true
+			}
+		}
+		return -1, false
+	}
+	wireEnd := map[[2]int64]bool{}
+	key := func(p Pt) [2]int64 { return [2]int64{int64(p.X*100 + 0.5), int64(p.Y*100 + 0.5)} }
+	for _, w := range s.wires {
+		wireEnd[key(w[0])], wireEnd[key(w[1])] = true, true
+	}
+	for i, e := range s.entries {
+		if !s.perp {
+			break
+		}
+		w, bp := e[0], e[1]
+		if !wireEnd[key(w)] {
+			w, bp = bp, w
+		}
+		bi, ok := onBus(bp)
+		if !ok {
+			continue
+		}
+		b := s.buses[bi]
+		var nb Pt
+		if abs(b[0].X-b[1].X) < 0.01 { // вертикальная шина
+			nb = Pt{b[0].X, w.Y}
+		} else {
+			nb = Pt{w.X, b[0].Y}
+		}
+		if _, ok := onBus(nb); !ok { // продлить шину до нового конца
+			if abs(b[0].X-b[1].X) < 0.01 {
+				if abs(nb.Y-b[0].Y) < abs(nb.Y-b[1].Y) {
+					s.buses[bi][0] = nb
+				} else {
+					s.buses[bi][1] = nb
+				}
+			} else {
+				if abs(nb.X-b[0].X) < abs(nb.X-b[1].X) {
+					s.buses[bi][0] = nb
+				} else {
+					s.buses[bi][1] = nb
+				}
+			}
+		}
+		s.entries[i] = [2]Pt{w, nb}
+	}
+	for _, b := range s.buses {
+		s.items = append(s.items, L("bus",
+			L("pts", L("xy", F(b[0].X), F(b[0].Y)), L("xy", F(b[1].X), F(b[1].Y))),
+			L("stroke", L("width", F(0)), L("type", A("default"))),
+			L("uuid", Q(s.uuid()))))
+	}
+	for _, e := range s.entries {
+		s.items = append(s.items, L("bus_entry",
+			L("at", F(e[0].X), F(e[0].Y)),
+			L("size", F(round(e[1].X-e[0].X)), F(round(e[1].Y-e[0].Y))),
+			L("stroke", L("width", F(0)), L("type", A("default"))),
+			L("uuid", Q(s.uuid()))))
+	}
 }
 
 // Label — локальная метка цепи. right — текст влево от точки.
@@ -385,6 +451,7 @@ func abs(f float64) float64 {
 func (s *Sheet) String() string {
 	s.splitWires()
 	s.autoJunctions()
+	s.emitBuses()
 	root := L("kicad_sch",
 		L("version", A("20260306")),
 		L("generator", Q("mpsgen")),
