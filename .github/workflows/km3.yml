@@ -1,4 +1,4 @@
-name: code
+name: КМ-3 программы и ПЗ2
 
 # Проверка программ КМ-3 (students/<ник>/code/prog{1,2,3}.a51) — только Go: свой ассемблер (asm51) и эмулятор 8051 (emu51),
 # ничего не ставится, прогон ~1 мин. Сверка ассемблера с MCU 8051 IDE — отдельная джоба mide, по кнопке (галочка в Run workflow).
@@ -9,7 +9,13 @@ name: code
 on:
   push:
     paths:
-      - "students/**"
+      - "students/*/variant.yaml"
+      - "students/*/code/**"
+      - "students/*/pz/pz2.md"
+      - "students/*/pz/flow/**"
+      - "cmd/mpspz/**"
+      - "internal/pz/**"
+      - "internal/flow/**"
       - "cmd/mpscode/**"
       - "internal/asm51/**"
       - "internal/emu51/**"
@@ -19,7 +25,7 @@ on:
       - "data/**"
       - "scripts/mide_crosscheck.sh"
       - "scripts/publish.sh"
-      - ".github/workflows/code.yml"
+      - ".github/workflows/km3.yml"
   workflow_dispatch:
     inputs:
       student:
@@ -32,7 +38,7 @@ on:
         default: false
 
 concurrency:
-  group: code-${{ github.ref }}-${{ inputs.student }}
+  group: km3-${{ github.ref }}-${{ inputs.student }}
   cancel-in-progress: true
 
 permissions:
@@ -49,8 +55,13 @@ jobs:
         with:
           go-version: "1.23"
 
-      - name: Тесты ассемблера, эмулятора и чекера (эталоны проходят, поломки падают)
-        run: go test ./internal/asm51/ ./internal/emu51/ ./internal/codecheck/
+      - name: pandoc 3.11 (docx; в PDF студент сохраняет сам, когда допишет)
+        run: |
+          curl -sSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.11/pandoc-3.11-1-amd64.deb
+          sudo dpkg -i /tmp/pandoc.deb >/dev/null
+
+      - name: Тесты ассемблера, эмулятора, чекера и ПЗ (эталоны проходят, поломки падают)
+        run: go test ./internal/asm51/ ./internal/emu51/ ./internal/codecheck/ ./internal/flow/ ./internal/pz/
 
       - name: Сборка mpscode
         run: go build -o bin/mpscode ./cmd/mpscode
@@ -75,7 +86,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         env:
           SUMMARY: "0"   # сводку уже написал mpscode
-        run: find build/ -mindepth 3 -maxdepth 3 -type d -name code -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
+        run: find build/ -mindepth 3 -maxdepth 3 -type d \( -name code -o -name pz2 \) -exec dirname {} \; | sort -u | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
 
       - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
         if: github.ref == 'refs/heads/main'
@@ -83,13 +94,30 @@ jobs:
         env:
           YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
           YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
-        run: find build/ -mindepth 3 -maxdepth 3 -type d -name code -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
+        run: find build/ -mindepth 3 -maxdepth 3 -type d \( -name code -o -name pz2 \) -exec dirname {} \; | sort -u | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
 
       - uses: actions/upload-artifact@v4
         with:
-          name: code
-          path: build/**/code/
+          name: КМ-3 программы и ПЗ2
+          path: |
+            build/**/code/
+            build/**/pz2/
           retention-days: 7
+
+      - name: ПЗ2 (у кого есть код)
+        env:
+          ONLY: ${{ inputs.student }}
+        run: |
+          go build -o bin/mpspz ./cmd/mpspz
+          for f in students/*/variant.yaml; do
+            s="$(basename "$(dirname "$f")")"
+            [ -n "$ONLY" ] && [ "$s" != "$ONLY" ] && continue
+            ls students/"$s"/code/prog[123].a51 >/dev/null 2>&1 || continue
+            echo "::group::$s"
+            bin/mpspz -student "$f" -doc pz2 || echo "::warning::ПЗ2 для $s не собралась"
+            echo "::endgroup::"
+          done
+          ls build/*/*/pz2/ 2>/dev/null || true
 
       - name: Итог по студентам
         if: steps.students.outputs.status != '0'

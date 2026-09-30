@@ -40,6 +40,7 @@ type Report struct {
 	Robot     string // текст для робота (vars.inc вклеен)
 	RobotName string // «Фамилия ИО-код-n.txt»
 	SimRun    bool   // сценарии в симуляторе выполнены
+	MaxSP     int    // наибольшее значение SP за все сценарии (глубина стека = MaxSP − 07h)
 }
 
 func (r *Report) add(l Level, name, format string, a ...any) {

@@ -12,7 +12,7 @@ set -euo pipefail
 
 # только папки, где генератор отработал
 dirs=()
-for d in "$@"; do { [ -f "$d/params.md" ] || [ -d "$d/code" ]; } && dirs+=("${d%/}") || echo "пропуск $d: нет params.md и code/" >&2; done
+for d in "$@"; do { [ -f "$d/params.md" ] || [ -d "$d/code" ] || [ -d "$d/pz1" ] || [ -d "$d/pz2" ]; } && dirs+=("${d%/}") || echo "пропуск $d: нет результатов" >&2; done
 [ ${#dirs[@]} -gt 0 ] || { echo "нечего публиковать" >&2; exit 0; }
 set -- "${dirs[@]}"
 
@@ -51,7 +51,13 @@ for attempt in 1 2 3; do
     out="$v/прогон-$n"
     mkdir -p "$out"
     for f in "${keep[@]}"; do [ -f "$d/$f" ] && cp "$d/$f" "$out/"; done
-    [ -d "$d/code" ] && cp -r "$d/code" "$out/code"
+    for sub in code pz1 pz2; do
+      if [ -d "$d/$sub" ]; then
+        mkdir -p "$out/$sub"
+        # всё, кроме исходника pandoc (*.md), но с отчётом
+        find "$d/$sub" -maxdepth 1 -type f \( ! -name '*.md' -o -name report.md \) -exec cp {} "$out/$sub/" \;
+      fi
+    done
     printf 'прогон %s\nworkflow: %s, запуск %s\nкоммит: %s\nдата: %s\n' "$n" "${GITHUB_WORKFLOW:-local}" \
       "${GITHUB_SERVER_URL:-}/${repo}/actions/runs/${GITHUB_RUN_ID:-}" "${GITHUB_SHA:-}" "$(date -u '+%Y-%m-%d %H:%M UTC')" > "$d/run.txt"
     cp "$d/run.txt" "$out/"

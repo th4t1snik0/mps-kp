@@ -1,4 +1,4 @@
-name: build
+name: КМ-1 схема и перечень
 
 # Два режима:
 #  - push, только если менялось то, что влияет на результат (код, таблица, символы, студенты…):
@@ -13,13 +13,13 @@ on:
       - "internal/**"
       - "data/**"
       - "masters/**"
-      - "students/**"
+      - "students/*/variant.yaml"
       - "fonts/**"
       - "scripts/**"
       - "Makefile"
       - "go.mod"
       - "go.sum"
-      - ".github/workflows/**"
+      - ".github/workflows/km1.yml"
   workflow_dispatch:
     inputs:
       group:
@@ -107,7 +107,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: build
+          name: КМ-1 схема и перечень
           path: |
             build/
             !build/**/*.kicad_prl

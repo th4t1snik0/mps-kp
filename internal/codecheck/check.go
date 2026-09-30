@@ -82,6 +82,7 @@ func Check(in Input) *Report {
 		return r
 	}
 	r.SimRun = true
+	r.MaxSP = 7
 	simulate(r, in, res, m)
 	return r
 }
@@ -203,6 +204,9 @@ func (h *harness) runUntil(maxUs float64, done func(pc int) bool) bool {
 	end := c.Cycles + uint64(maxUs)
 	for c.Cycles < end {
 		c.Step()
+		if sp := int(c.SFRByte(0x81)); sp > h.r.MaxSP {
+			h.r.MaxSP = sp
+		}
 		if done(int(c.PC)) {
 			return true
 		}
