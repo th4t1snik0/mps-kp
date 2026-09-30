@@ -21,8 +21,8 @@ TOKEN = os.environ.get("YADISK_TOKEN", "")
 PUBLIC = os.environ.get("YADISK_PUBLIC", "")
 
 
-def call(method, path, **params):
-    url = API + path + ("?" + urllib.parse.urlencode(params) if params else "")
+def call(method, endpoint, **params):
+    url = API + endpoint + ("?" + urllib.parse.urlencode(params) if params else "")
     req = urllib.request.Request(url, method=method, headers={"Authorization": "OAuth " + TOKEN})
     try:
         with urllib.request.urlopen(req) as r:
