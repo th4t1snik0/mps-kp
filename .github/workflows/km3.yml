@@ -107,7 +107,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           include-hidden-files: true   # build/…/.run — номер прогона для диска
-          name: КМ-3 программы и ПЗ2
+          name: code
           path: |
             build/**/code/
             build/**/pz2/
