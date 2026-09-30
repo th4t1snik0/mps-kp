@@ -1,11 +1,25 @@
 name: build
 
 # Два режима:
-#  - push: тесты + сборка всех students/*/variant.yaml;
+#  - push, только если менялось то, что влияет на результат (код, таблица, символы, студенты…):
+#    тесты + сборка всех students/*/variant.yaml. Правки памяти (sessions/, notes/, docs/, *.md) CI не гоняют —
+#    раннер каждый раз чистый, и KiCad ставится заново (~1 мин), незачем тратить это на текст;
 #  - Actions → build → Run workflow: ввести группу и M — соберётся один вариант
 #    (удобно с телефона: результат в артефакте build внизу страницы запуска).
 on:
   push:
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "data/**"
+      - "masters/**"
+      - "students/**"
+      - "fonts/**"
+      - "scripts/**"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/**"
   workflow_dispatch:
     inputs:
       group:
@@ -16,6 +30,11 @@ on:
         description: "Номер варианта M (1..30)"
         required: false
         default: ""
+
+# новый пуш отменяет ещё идущий прогон той же ветки
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
