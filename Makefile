@@ -4,6 +4,7 @@
 # make code S=<ник>                         — проверить students/<ник>/code/prog{1,2,3}.a51 → build/<группа>/<вариант>/code/
 # make code-init S=<ник>                    — заготовки программ в students/<ник>/code/ (существующие не трогает)
 # make code-try G=А-12 M=14 F=prog1.a51     — проверить любой файл под любой вариант
+# make all S=<ник>                          — всё, что делают джобы КМ-1…КМ-3, локально + сводка (нужны KiCad и pandoc)
 # make pz1 S=<ник>                          — схема + ПЗ1 → build/<группа>/<вариант>/pz1/ (нужны KiCad и pandoc)
 # make pz2-init S=<ник>                     — места «ДОПИШИ» (students/<ник>/pz/pz2.md) + заготовки схем алгоритмов
 # make pz2 S=<ник>                          — ПЗ2 → build/<группа>/<вариант>/pz2/«Фамилия ИО ПЗ2.docx» (нужен pandoc)
@@ -44,6 +45,12 @@ pz2: bin/mpspz
 pz2-init: bin/mpspz
 	./bin/mpspz -table $(TABLE) -year $(Y) -student students/$(S)/variant.yaml -doc pz2 -init
 
+all: student bin/mpscode bin/mpspz
+	-./bin/mpscode -table $(TABLE) -year $(Y) -student students/$(S)/variant.yaml > /dev/null
+	./bin/mpspz -table $(TABLE) -year $(Y) -student students/$(S)/variant.yaml -doc pz1 > /dev/null
+	./bin/mpspz -table $(TABLE) -year $(Y) -student students/$(S)/variant.yaml -doc pz2 > /dev/null
+	@scripts/summary.sh $(S) $(Y)
+
 code: bin/mpscode
 	./bin/mpscode -table $(TABLE) -year $(Y) -student students/$(S)/variant.yaml
 
@@ -58,4 +65,4 @@ KICAD_SYMBOLS ?= /Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols
 lib:
 	go run ./cmd/mpslib -kicad $(KICAD_SYMBOLS)
 
-.PHONY: test student try lib code code-init code-try pz1 pz1-init pz2 pz2-init
+.PHONY: all test student try lib code code-init code-try pz1 pz1-init pz2 pz2-init
