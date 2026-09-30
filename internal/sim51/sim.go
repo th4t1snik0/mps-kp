@@ -354,3 +354,28 @@ func Guard(err *error) {
 		panic(r)
 	}
 }
+
+// DumpIRAM — всё внутреннее ОЗУ (256 байт) одной командой.
+func (s *Sim) DumpIRAM() (m [256]byte) {
+	out := s.must("dump iram 0 0xff 16")
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) < 2 || !strings.HasPrefix(f[0], "0x") {
+			continue
+		}
+		a, err := strconv.ParseInt(f[0][2:], 16, 32)
+		if err != nil {
+			continue
+		}
+		for i := 1; i < len(f) && i <= 16; i++ {
+			v, err := strconv.ParseUint(f[i], 16, 8)
+			if err != nil || len(f[i]) != 2 {
+				break
+			}
+			if int(a)+i-1 < 256 {
+				m[int(a)+i-1] = byte(v)
+			}
+		}
+	}
+	return m
+}

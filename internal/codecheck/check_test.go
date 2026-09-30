@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"mpskp/internal/render"
-	"mpskp/internal/sim51"
 	"mpskp/internal/variant"
 )
 
@@ -49,15 +48,7 @@ func run(t *testing.T, p *variant.Params, n int, src string) *Report {
 	return Check(Input{Params: p, Prog: n, Src: src, Name: fmt.Sprintf("prog%d.a51", n), VarsInc: render.Asm(p), Seed: 7})
 }
 
-// needSim — без s51 тесты сценариев пропускаются; в CI (MPS_REQUIRE_S51=1) — падают.
-func needSim(t *testing.T) {
-	if !sim51.Available() {
-		if os.Getenv("MPS_REQUIRE_S51") != "" {
-			t.Fatal("нет s51, а MPS_REQUIRE_S51 задан")
-		}
-		t.Skip("нет s51")
-	}
-}
+func needSim(t *testing.T) {} // эмулятор встроенный — сценарии идут всегда
 
 // Эталоны проходят на вариантах со всеми сочетаниями: 4×3/3×4, чтение/запись, ОК/ОА, все три программы 3.
 func TestReferencePass(t *testing.T) {

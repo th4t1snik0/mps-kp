@@ -74,14 +74,13 @@ macOS: `brew install --cask kicad && brew install go poppler`. Ubuntu: PPA `ppa:
 что проверяется). Коротко:
 
 ```sh
-brew install sdcc                # симулятор s51 (ucsim) — нужен для сценариев; без него только сборка и правила
 make code-init S=<ник>           # заготовки по рис. 7 ТЗ под твой вариант → students/<ник>/code/
 make code S=<ник>                # проверка → build/<группа>/<M>/code/: report.md, «Фамилия ИО-код-n.txt» для робота
 make code-try G=А-12 M=14 F=prog1.a51
 ```
 
-Push в `students/<ник>/code/` запускает workflow **code** (без KiCad): тесты чекера, `mpscode` по всем студентам,
-сверка нашего ассемблера с MCU 8051 IDE, результаты — в `results/<группа>/<M>/прогон-N/code/` и на Яндекс-диск.
+Push в `students/<ник>/code/` запускает workflow **code** (только Go, ~1 мин): тесты чекера, `mpscode` по всем студентам,
+результаты — в `results/<группа>/<M>/прогон-N/code/` и на Яндекс-диск.
 Эталоны `internal/codecheck/testdata/ref/` — только для проверки чекера, студентам не копировать.
 
 **Текущее задание — ТЗ-2026** (`docs/source/ТЗ-2026.pdf`, разбор отличий — `docs/research/tz-2026.md`), таблица по умолчанию —
@@ -102,7 +101,8 @@ Push в `students/<ник>/code/` запускает workflow **code** (без K
 - `cmd/mpslib` — собирает `masters/lib/mps.kicad_sym` из библиотек KiCad (+ IDT7005, FYS-5612, ГОСТ-земля).
 - `internal/render` — `params.md`, `vars.inc`. `masters/gost_ramka.kicad_wks` — рамка ГОСТ.
 - `internal/asm51` — ассемблер A51 (двухпроходный, generic JMP/CALL как в ASEM-51; байты = MCU 8051 IDE),
-  `internal/sim51` — управление ucsim `s51` по TCP-консоли, `internal/codecheck` — правила робота, модели устройств схемы,
+  `internal/emu51` — эмулятор 8051 (сверен с ucsim s51: `MPS_S51_DIFF=1 go test ./internal/emu51` — случайные программы и эталоны
+  байт в байт и такт в такт; `internal/sim51` — управление s51 для этой сверки), `internal/codecheck` — правила робота, модели устройств схемы,
   сценарии программ, заготовки (`templates/`), эталоны (`testdata/ref/`); `cmd/mpscode` — CLI. Любая правка сценариев —
   с тестом в `check_test.go`: эталоны проходят, «поломки» падают.
 

@@ -1,9 +1,10 @@
 name: code
 
-# Проверка программ КМ-3 (students/<ник>/code/prog{1,2,3}.a51) — без KiCad, только Go + симулятор s51.
+# Проверка программ КМ-3 (students/<ник>/code/prog{1,2,3}.a51) — только Go: свой ассемблер (asm51) и эмулятор 8051 (emu51),
+# ничего не ставится, прогон ~1 мин. Сверка ассемблера с MCU 8051 IDE — отдельная джоба mide, по кнопке (галочка в Run workflow).
 #  - push: если менялись программы студентов, чекер, шаблоны или таблица;
 #  - Actions → code → Run workflow: можно указать ник (пусто — все студенты).
-# Что делает: тесты чекера на эталонах; сверка нашего ассемблера с MCU 8051 IDE; mpscode по каждому студенту;
+# Что делает: тесты чекера на эталонах; mpscode по каждому студенту;
 # результаты (файлы для робота «Фамилия ИО-код-n.txt», отчёт) — в ветку results (<группа>/<M>/code/), на Яндекс-диск и в артефакт.
 on:
   push:
@@ -11,7 +12,7 @@ on:
       - "students/**"
       - "cmd/mpscode/**"
       - "internal/asm51/**"
-      - "internal/sim51/**"
+      - "internal/emu51/**"
       - "internal/codecheck/**"
       - "internal/variant/**"
       - "internal/render/**"
@@ -25,6 +26,10 @@ on:
         description: "Ник студента (папка в students/); пусто — все"
         required: false
         default: ""
+      mide:
+        description: "Сверить наш ассемблер с MCU 8051 IDE (apt, +1…10 мин)"
+        type: boolean
+        default: false
 
 concurrency:
   group: code-${{ github.ref }}-${{ inputs.student }}
@@ -36,6 +41,7 @@ permissions:
 jobs:
   code:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -43,45 +49,11 @@ jobs:
         with:
           go-version: "1.23"
 
-      - name: Симулятор s51 (ucsim из SDCC через Homebrew — та же версия, что локально на macOS)
-        run: |
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          brew install sdcc
-          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
-          "$(brew --prefix)/bin/s51" -v
-
-      - name: MCU 8051 IDE (второй ассемблер для сверки)
-        id: mide
-        timeout-minutes: 6
-        continue-on-error: true   # сверка — страховка нашего ассемблера, а не проверка студента
-        run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mcu8051ide
-
-      - name: Тесты ассемблера, симулятора и чекера (эталоны должны проходить, поломки — падать)
-        env:
-          MPS_REQUIRE_S51: "1"
-          SIM51_TRACE: ${{ github.workspace }}/s51-trace
-        # по одному s51 за раз: на 4 ядрах раннера 18 параллельных симуляторов душат друг друга (ответ s51 > 60 с)
-        run: go test -parallel 1 -timeout 15m ./internal/asm51/ ./internal/sim51/ ./internal/codecheck/
-
-      - name: Журнал s51 при падении тестов
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: s51-trace
-          path: s51-trace/
-          retention-days: 3
+      - name: Тесты ассемблера, эмулятора и чекера (эталоны проходят, поломки падают)
+        run: go test ./internal/asm51/ ./internal/emu51/ ./internal/codecheck/
 
       - name: Сборка mpscode
         run: go build -o bin/mpscode ./cmd/mpscode
-
-      - name: Эталоны чекера → build-ref (для сверки с MIDE)
-        run: |
-          r=internal/codecheck/testdata/ref
-          bin/mpscode -outroot build-ref -group А-12 -m 14 -nosim $r/prog1.a51 $r/prog2r.a51 $r/prog3y2.a51 >/dev/null
-          bin/mpscode -outroot build-ref -group А-12 -m 15 -nosim $r/prog2w.a51 $r/prog3ind.a51 >/dev/null
-          bin/mpscode -outroot build-ref -group А-17 -m 16 -nosim $r/prog3y1.a51 >/dev/null
 
       - name: Программы студентов
         id: students
@@ -98,10 +70,6 @@ jobs:
             echo "::endgroup::"
           done
           echo "status=$status" >> "$GITHUB_OUTPUT"
-
-      - name: Сверка asm51 с MCU 8051 IDE
-        if: steps.mide.outcome == 'success'
-        run: scripts/mide_crosscheck.sh build build-ref
 
       - name: Результаты → ветка results
         if: github.ref == 'refs/heads/main'
@@ -120,9 +88,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: code
-          path: |
-            build/**/code/
-            build-ref/
+          path: build/**/code/
           retention-days: 7
 
       - name: Итог по студентам
@@ -130,3 +96,29 @@ jobs:
         run: |
           echo "::error::в программах студентов есть ❌ — отчёт на странице запуска (Summary) и в build/<группа>/<M>/code/report.md"
           exit 1
+
+  mide:
+    # вторая сборка эталонов и программ студентов MCU 8051 IDE — байты должны совпасть с asm51
+    if: github.event_name == 'workflow_dispatch' && inputs.mide
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: MCU 8051 IDE
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mcu8051ide
+      - name: Сверка asm51 с MCU 8051 IDE
+        run: |
+          go build -o bin/mpscode ./cmd/mpscode
+          r=internal/codecheck/testdata/ref
+          bin/mpscode -outroot build-ref -group А-12 -m 14 -nosim $r/prog1.a51 $r/prog2r.a51 $r/prog3y2.a51 >/dev/null || true
+          bin/mpscode -outroot build-ref -group А-12 -m 15 -nosim $r/prog2w.a51 $r/prog3ind.a51 >/dev/null || true
+          bin/mpscode -outroot build-ref -group А-17 -m 16 -nosim $r/prog3y1.a51 >/dev/null || true
+          for f in students/*/variant.yaml; do
+            ls "$(dirname "$f")"/code/prog[123].a51 >/dev/null 2>&1 && bin/mpscode -nosim -student "$f" >/dev/null || true
+          done
+          scripts/mide_crosscheck.sh build build-ref

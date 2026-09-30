@@ -3,12 +3,10 @@ package codecheck
 import (
 	"fmt"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"mpskp/internal/asm51"
-	"mpskp/internal/sim51"
+	"mpskp/internal/emu51"
 	"mpskp/internal/variant"
 )
 
@@ -83,14 +81,8 @@ func Check(in Input) *Report {
 	if m == nil || in.NoSim {
 		return r
 	}
-	if !sim51.Available() {
-		r.warn("Симулятор", "нет s51 (brew install sdcc или S51=путь) — сценарии пропущены")
-		return r
-	}
 	r.SimRun = true
-	if err := simulate(r, in, res, m); err != nil {
-		r.fail("Симулятор", "%v", err)
-	}
+	simulate(r, in, res, m)
 	return r
 }
 
@@ -110,7 +102,7 @@ func sameBytes(a, b map[int]byte) bool {
 type harness struct {
 	r   *Report
 	p   *variant.Params
-	s   *sim51.Sim
+	s   mcu
 	res *asm51.Result
 	rng *rand.Rand
 
@@ -126,30 +118,47 @@ type harness struct {
 	p1   byte
 }
 
-func simulate(r *Report, in Input, res *asm51.Result, m *marks) (err error) {
-	defer sim51.Guard(&err)
-	dir, err := os.MkdirTemp("", "mpscode")
-	if err != nil {
-		return err
+func simulate(r *Report, in Input, res *asm51.Result, m *marks) {
+	cpu := emu51.New(int64(in.Seed + 1))
+	for a, b := range res.Code {
+		cpu.Code[a] = b
 	}
-	defer os.RemoveAll(dir)
-	hex := filepath.Join(dir, "prog.hex")
-	if err := os.WriteFile(hex, []byte(res.HEX()), 0o644); err != nil {
-		return err
-	}
-	s, err := sim51.Start(hex, in.Seed+1)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
 	p := in.Params
-	h := &harness{r: r, p: p, s: s, res: res, rng: rand.New(rand.NewSource(int64(in.Seed))),
+	h := &harness{r: r, p: p, s: mcu{cpu}, res: res, rng: rand.New(rand.NewSource(int64(in.Seed))),
 		procAt: m.proc.Addr, procRet: m.proc.Addr + len(m.proc.Bytes), stopAt: m.stop.Addr,
 		adrKB: p.Dev("Клавиатура").Base, adrY2: p.Dev("Регистр Y2").Base, adrInd: p.Dev("Индикатор").Base, csenBit: -1}
 	if pin, err := variant.ParsePin(p.CSEnPin); err == nil && pin.Port == 3 {
 		h.csenBit = pin.Bit
 	}
-	h.p1 = s.Latch(1)
+	// любое обращение movx идёт через дешифратор 74HC138 — при CS_EN = 0 ни одно устройство не выбрано
+	csen := func(what string, addr uint16) {
+		if h.csenBit >= 0 && cpu.Latch(3)&(1<<h.csenBit) == 0 {
+			h.csenBad = append(h.csenBad, fmt.Sprintf("%s %04Xh (PC %04Xh)", what, addr, cpu.PC))
+		}
+	}
+	cpu.OnXWrite = func(addr uint16, v byte) {
+		csen("запись", addr)
+		if h.onXW != nil {
+			h.onXW(int(addr), v)
+		}
+	}
+	cpu.OnXRead = func(addr uint16) (byte, bool) {
+		csen("чтение", addr)
+		if h.onXR != nil {
+			h.onXR(int(addr))
+		}
+		return 0, false
+	}
+	cpu.OnPort = func(n int, old, cur byte) {
+		if n != 1 {
+			return
+		}
+		if h.onP1 != nil {
+			h.onP1(old, cur)
+		}
+		h.p1 = cur
+	}
+	h.p1 = cpu.Latch(1)
 	switch in.Prog {
 	case 1:
 		prog1(h)
@@ -170,7 +179,6 @@ func simulate(r *Report, in Input, res *asm51.Result, m *marks) (err error) {
 	} else if h.csenBit >= 0 {
 		r.pass("CS_EN", "все обращения к устройствам — при %s = 1", p.CSEnPin)
 	}
-	return nil
 }
 
 func uniq(xs []string) []string {
@@ -188,66 +196,22 @@ func uniq(xs []string) []string {
 	return out
 }
 
-// dispatch — разбор события по памяти: какая команда перед PC его вызвала.
-func (h *harness) dispatch(pc int) {
-	op := h.res.Code[pc-1]
-	switch op {
-	case 0xF0, 0xF2, 0xF3, 0xE0, 0xE2, 0xE3:
-		var addr int
-		if op&0x0F == 0 {
-			addr = int(h.s.SFR(0x83))<<8 | int(h.s.SFR(0x82))
-		} else {
-			bank := int(h.s.SFR(0xD0)) & 0x18
-			addr = int(h.s.Latch(2))<<8 | int(h.s.IRAM(bank+int(op&1)))
-		}
-		if h.csenBit >= 0 && h.s.Latch(3)&(1<<h.csenBit) == 0 {
-			h.csenBad = append(h.csenBad, fmt.Sprintf("%s %04Xh (PC %04Xh)", map[bool]string{true: "запись", false: "чтение"}[op >= 0xF0], addr, pc-1))
-		}
-		if op >= 0xF0 {
-			if h.onXW != nil {
-				h.onXW(addr, h.s.XRAM(addr))
-			}
-		} else if h.onXR != nil {
-			h.onXR(addr)
-		}
-	default:
-		cur := h.s.Latch(1)
-		if cur != h.p1 && h.onP1 != nil {
-			h.onP1(h.p1, cur)
-		}
-		h.p1 = cur
-	}
-}
-
-// runUntil — прогон не дольше maxUs мкс, пока done не вернёт true (проверяется на каждом останове).
-// Возвращает false по таймауту.
+// runUntil — прогон не дольше maxUs мкс (1 МЦ = 1 мкс), пока done(PC) не вернёт true; проверка — после каждой команды
+// (как останов s51 перед выборкой). false — вышло время.
 func (h *harness) runUntil(maxUs float64, done func(pc int) bool) bool {
-	end := h.s.Micros() + maxUs
-	for {
-		rem := end - h.s.Micros()
-		if rem < 1 {
-			return false
-		}
-		st := h.s.Run(rem)
-		if st.Event {
-			h.dispatch(st.PC)
-		}
-		if done(st.PC) {
+	c := h.s.c
+	end := c.Cycles + uint64(maxUs)
+	for c.Cycles < end {
+		c.Step()
+		if done(int(c.PC)) {
 			return true
 		}
-		if st.Timeout {
-			return false
-		}
 	}
+	return false
 }
 
-// runTo — прогон до выборки команды по одному из адресов (брейкпоинты только на время ожидания:
-// постоянный брейкпоинт на «jmp $» останавливал бы симулятор каждые 2 мкс). Возвращает адрес или -1.
+// runTo — прогон до выборки команды по одному из адресов. Возвращает адрес или -1.
 func (h *harness) runTo(maxUs float64, addrs ...int) int {
-	var bps []int
-	for _, a := range addrs {
-		bps = append(bps, h.s.BreakCode(a))
-	}
 	hit := -1
 	h.runUntil(maxUs, func(pc int) bool {
 		for _, a := range addrs {
@@ -258,9 +222,6 @@ func (h *harness) runTo(maxUs float64, addrs ...int) int {
 		}
 		return false
 	})
-	for _, b := range bps {
-		h.s.Delete(b)
-	}
 	return hit
 }
 
