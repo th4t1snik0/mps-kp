@@ -1,0 +1,78 @@
+name: КМ-2 ПЗ1
+
+# ПЗ1 «Аппаратная часть» в docx: генерируемое (структурная и функциональная схемы, фрагменты Э3 по узлам, расчёты
+# с номиналами из перечня, таблицы выводов/адресов/кодов, временные диаграммы, перечень, Э3 в приложении) + текст студента
+# из students/<ник>/pz/pz1.md (места «ДОПИШИ»). Схема строится тут же (KiCad) — ПЗ1 всегда соответствует схеме.
+#  - push: при изменении текста ПЗ1, варианта студента или генераторов;
+#  - Actions → «КМ-2 ПЗ1» → Run workflow: ник (пусто — все студенты).
+on:
+  push:
+    paths:
+      - "students/*/variant.yaml"
+      - "students/*/pz/pz1.md"
+      - "cmd/mpspz/**"
+      - "cmd/mpsgen/**"
+      - "internal/pz/**"
+      - "internal/diag/**"
+      - "internal/schgen/**"
+      - "internal/variant/**"
+      - "data/**"
+      - ".github/workflows/km2.yml"
+  workflow_dispatch:
+    inputs:
+      student:
+        description: "Ник студента (папка в students/); пусто — все"
+        required: false
+        default: ""
+
+concurrency:
+  group: km2-${{ github.ref }}-${{ inputs.student }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  pz1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: KiCad 10, poppler, pandoc 3.11, шрифты
+        run: |
+          sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends kicad poppler-utils >/dev/null
+          curl -sSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.11/pandoc-3.11-1-amd64.deb
+          sudo dpkg -i /tmp/pandoc.deb >/dev/null
+          mkdir -p ~/.fonts && cp fonts/*.ttf ~/.fonts/ && fc-cache -f
+      - name: Схема и ПЗ1
+        env:
+          ONLY: ${{ inputs.student }}
+        run: |
+          go build -o bin/mpspz ./cmd/mpspz
+          for f in students/*/variant.yaml; do
+            s="$(basename "$(dirname "$f")")"
+            [ -n "$ONLY" ] && [ "$s" != "$ONLY" ] && continue
+            echo "::group::$s"
+            make student S="$s" >/dev/null && bin/mpspz -student "$f" -doc pz1 || echo "::warning::ПЗ1 для $s не собралась"
+            echo "::endgroup::"
+          done
+      - name: Результаты → ветка results
+        if: github.ref == 'refs/heads/main'
+        run: find build/ -mindepth 3 -maxdepth 3 -type d -name pz1 -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
+      - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: find build/ -mindepth 3 -maxdepth 3 -type d -name pz1 -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pz1
+          path: build/**/pz1/
+          retention-days: 7

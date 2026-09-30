@@ -131,6 +131,7 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 		v.Jitter = &j
 	}
 	sh := schgen.Build(lib, v, fmt.Sprintf("%s-%d", p.Group, p.M))
+	regions := sh.Regions() // до String(): тот сдвигает лист и обнуляет сдвиг
 	writes := map[string]string{
 		"schematic.kicad_sch": sh.String(),
 		"schematic.kicad_pro": schgen.Project,
@@ -160,6 +161,13 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 			writes[fmt.Sprintf("%s-%d.kicad_wks", set.name, i+1)] = schgen.PE3Frame(i == 0, i+1, len(pages), peLine, v.Style.FullFrame)
 		}
 	}
+	// для ПЗ1 (mpspz -doc pz1): рамки узлов для вырезок, позиционные обозначения по ролям, полный перечень
+	refs := map[string][2]string{}
+	for role, c := range sh.Roles {
+		refs[role] = [2]string{c.Ref, c.Value}
+	}
+	sj, _ := json.MarshalIndent(map[string]any{"regions": regions, "refs": refs, "bom": full, "paper_mm": [2]float64{420, 297}}, "", "  ")
+	writes["sheet.json"] = string(sj)
 	writes["perechen.md"] = schgen.BOMMarkdown(full, "Перечень элементов — "+peLine) + "\n" +
 		schgen.BOMMarkdown(km1, "Черновик для КМ-1 (только микросхемы и разъёмы)")
 	for name, body := range writes {

@@ -88,3 +88,32 @@ func (d *Doc) Title(t TitleInfo) {
 	x.WriteString(`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`)
 	d.w("\n```{=openxml}\n%s\n```\n\n", x.String())
 }
+
+// TitleA — титул ПЗ1 по Прил. А ТЗ-2026 (без рамки и боковых граф): шапка вуза, «КУРСОВАЯ  РАБОТА», курс, тема,
+// «Аппаратная часть», блок «Выполнил / Группа / Вариант / Дата», «Проверил / Дата», «Москва, год».
+func (d *Doc) TitleA(t TitleInfo, date string) {
+	var x strings.Builder
+	x.WriteString(tp("center", 0, 0, false, 14, run("Федеральное государственное бюджетное образовательное учреждение высшего образования")))
+	x.WriteString(tp("center", 0, 0, false, 14, run("«Национальный исследовательский университет «МЭИ»")))
+	x.WriteString(tp("center", 62, 0, true, 14, run("КУРСОВАЯ  РАБОТА")))
+	x.WriteString(tp("center", 4, 0, false, 14, run("по курсу \"Микропроцессорные системы\"")))
+	x.WriteString(tp("center", 22, 0, false, 16, run("Проектирование микропроцессорной системы на базе МК i8051")))
+	x.WriteString(tp("center", 8, 0, true, 14, run(t.Doc)))
+	lab := func(before float64, k, v string) {
+		if d.Style.Name == "A" && v != "" {
+			// как у Осиповой: значение подчёркнуто
+			x.WriteString(tp("left", before, 95, false, 14, run(k+" ")+`<w:r><w:rPr><w:u w:val="single"/><w:sz w:val="28"/></w:rPr><w:t xml:space="preserve">`+xmlEsc(v)+`</w:t></w:r>`))
+			return
+		}
+		x.WriteString(tp("left", before, 95, false, 14, run(k+" "+v)))
+	}
+	lab(26, "Выполнил:", t.FIO)
+	lab(2, "Группа:", t.Group)
+	lab(2, "Вариант:", fmt.Sprint(t.M))
+	lab(2, "Дата:", date)
+	lab(8, "Проверил:", t.Checker)
+	lab(2, "Дата:", "")
+	x.WriteString(tp("center", 52, 0, false, 14, run(fmt.Sprintf("Москва, %d", t.Year))))
+	x.WriteString(`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`)
+	d.w("\n```{=openxml}\n%s\n```\n\n", x.String())
+}

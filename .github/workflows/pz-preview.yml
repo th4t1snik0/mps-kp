@@ -29,12 +29,19 @@ jobs:
           sudo dpkg -i /tmp/pandoc.deb >/dev/null
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libreoffice-writer-nogui poppler-utils fonts-liberation >/dev/null
+          if [ "${{ inputs.doc }}" = pz1 ]; then
+            sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases >/dev/null
+            sudo apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends kicad >/dev/null
+            mkdir -p ~/.fonts && cp fonts/*.ttf ~/.fonts/ && fc-cache -f
+          fi
       - name: Сборка и рендер
         env:
           S: ${{ inputs.student }}
           DOC: ${{ inputs.doc }}
         run: |
           go build -o bin/mpspz ./cmd/mpspz
+          [ "$DOC" = pz1 ] && make student S="$S" >/dev/null
           mkdir -p preview
           for st in A B C; do
             bin/mpspz -student "students/$S/variant.yaml" -doc "$DOC" -style $st >/dev/null

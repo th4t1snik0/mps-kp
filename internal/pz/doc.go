@@ -118,6 +118,14 @@ func (d *Doc) Bullets(items ...string) {
 	d.w("\n")
 }
 
+// Numbered — нумерованный список «1. …» (литература).
+func (d *Doc) Numbered(items ...string) {
+	for i, it := range items {
+		d.w("%d. %s\n", i+1, esc(it))
+	}
+	d.w("\n")
+}
+
 // NextFig / NextTab — номер, который получит следующий рисунок / таблица (для ссылок в тексте до них).
 func (d *Doc) NextFig() string { return d.label(d.fig + 1) }
 func (d *Doc) NextTab() string { return d.label(d.tab + 1) }
