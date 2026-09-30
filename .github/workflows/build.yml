@@ -1,0 +1,57 @@
+name: build
+
+# Два режима:
+#  - push: тесты + сборка всех students/*/variant.yaml;
+#  - Actions → build → Run workflow: ввести группу и M — соберётся один вариант
+#    (удобно с телефона: результат в артефакте build внизу страницы запуска).
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      group:
+        description: "Группа, как в data/table-2025.yaml (А-07, А-08, А-12, А-17, Аэ-21)"
+        required: false
+        default: ""
+      m:
+        description: "Номер варианта M (1..30)"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: KiCad 10 + poppler + шрифт ГОСТ
+        run: |
+          sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends kicad poppler-utils
+          mkdir -p ~/.fonts && cp fonts/*.ttf ~/.fonts/ && fc-cache -f
+
+      - name: Тесты
+        run: go test ./...
+
+      - name: Один вариант (Run workflow)
+        if: github.event_name == 'workflow_dispatch' && inputs.group != '' && inputs.m != ''
+        run: make try G="${{ inputs.group }}" M="${{ inputs.m }}"
+
+      - name: Все студенты
+        if: github.event_name == 'push' || inputs.group == ''
+        run: |
+          for f in students/*/variant.yaml; do
+            make student S="$(basename "$(dirname "$f")")"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            build/
+            !build/**/*.kicad_prl
+          retention-days: 7

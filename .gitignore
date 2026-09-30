@@ -1,0 +1,14 @@
+bin/
+build/
+*.kicad_sch-bak
+*.lck
+
+# чужие работы прошлых лет — локально, не коммитить (см. CLAUDE.md)
+docs/prev/
+*.kicad_prl
+~*.lck
+
+# личные настройки ИИ
+CLAUDE.local.md
+AGENTS.local.md
+.DS_Store

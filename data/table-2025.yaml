@@ -1,0 +1,104 @@
+# Таблица 1 из ТЗ «МПС ч.2», 2025 год.
+# Когда выйдет новое ТЗ — скопировать файл в table-<год>.yaml и поправить числа.
+# Формулы вида «X + 10M» записываются как {base: X, per_m: 10}.
+# Пины — строго в виде P2.5, P1.0; прерывания — INT0 / INT1; таймеры — 0 / 1.
+
+year: 2025
+crystal_mhz: 12
+x2_max_rate_per_s: 5        # «до 5 отсчётов в секунду»
+
+groups:
+  А-07:
+    t1_ms:        {base: 177, per_m: 10}
+    y1_timer:     0
+    cs_buf:       P2.7
+    v_bytes:      {base: 1100, per_m: 10}
+    head_addr:    0x37
+    tail_addr:    0x39
+    empty_bit:    {base: 7, per_m: 1}
+    ovf_bit:      {base: 0, per_m: 1}
+    cs_y2:        P2.6
+    y2_timer:     1
+    t2_us:        {base: 1105, per_m: 10}
+    cs_ind:       {odd: P2.5, even: P2.4}
+    t3_ms:        {base: 2000, per_m: 25}   # 2,00 + M/40 с
+    t3_timer:     0
+    indicator:    ""                          # cathode | anode — проверить по табл. 1 ТЗ
+    cs_kb:        P2.3
+    kb_int:       INT0
+
+  А-08:
+    t1_ms:        {base: 188, per_m: 10}
+    y1_timer:     0
+    cs_buf:       P2.6
+    v_bytes:      {base: 1205, per_m: 10}
+    head_addr:    0x38
+    tail_addr:    0x3A
+    empty_bit:    {base: 8, per_m: 1}
+    ovf_bit:      {base: 0, per_m: 1}
+    cs_y2:        P2.5
+    y2_timer:     1
+    t2_us:        {base: 1350, per_m: 10}
+    cs_ind:       {odd: P2.4, even: P2.3}
+    t3_ms:        {base: 2240, per_m: 25}
+    t3_timer:     0
+    indicator:    ""
+    cs_kb:        P2.7
+    kb_int:       INT1
+
+  А-12:
+    t1_ms:        {base: 212, per_m: 10}
+    y1_timer:     1
+    cs_buf:       P2.5
+    v_bytes:      {base: 1400, per_m: 10}
+    head_addr:    0x42
+    tail_addr:    0x44
+    empty_bit:    {base: 12, per_m: 1}
+    ovf_bit:      {base: 0, per_m: 1}
+    cs_y2:        P2.4
+    y2_timer:     0
+    t2_us:        {base: 1605, per_m: 10}
+    cs_ind:       {odd: P2.3, even: P2.7}
+    t3_ms:        {base: 2480, per_m: 25}
+    t3_timer:     1
+    indicator:    cathode                     # в работах группы — FYS-5612AX
+    cs_kb:        P2.6
+    kb_int:       INT0
+
+  А-17:
+    t1_ms:        {base: 170, per_m: 10}
+    y1_timer:     1
+    cs_buf:       P2.4
+    v_bytes:      {base: 1505, per_m: 10}
+    head_addr:    0x47
+    tail_addr:    0x49
+    empty_bit:    {base: 17, per_m: 1}
+    ovf_bit:      {base: 0, per_m: 1}
+    cs_y2:        P2.3
+    y2_timer:     0
+    t2_us:        {base: 1850, per_m: 10}
+    cs_ind:       {odd: P2.7, even: P2.6}
+    t3_ms:        {base: 2120, per_m: 25}
+    t3_timer:     1
+    indicator:    ""
+    cs_kb:        P2.5
+    kb_int:       INT1
+
+  Аэ-21:
+    t1_ms:        {base: 221, per_m: 10}
+    y1_timer:     1
+    cs_buf:       P2.3
+    v_bytes:      {base: 1700, per_m: 10}
+    head_addr:    0x51
+    tail_addr:    0x53
+    empty_bit:    {base: 21, per_m: 1}
+    ovf_bit:      {base: 0, per_m: 1}
+    cs_y2:        P2.7
+    y2_timer:     0
+    t2_us:        {base: 2105, per_m: 10}
+    cs_ind:       {odd: P2.6, even: P2.5}
+    t3_ms:        {base: 2360, per_m: 25}
+    t3_timer:     1
+    indicator:    ""
+    cs_kb:        P2.4
+    kb_int:       INT0

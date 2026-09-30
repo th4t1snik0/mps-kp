@@ -1,0 +1,117 @@
+// mpsgen — генератор материалов курсовой «МПС ч.2» под вариант.
+//
+//	mpsgen -student students/ivan/variant.yaml -out build/ivan
+//	mpsgen -group А-17 -m 16 -out build/try-16     # быстро прикинуть вариант
+//
+// На выходе: params.md, params.json, vars.inc, schematic.kicad_sch (+ .kicad_pro, ramka.kicad_wks).
+// PDF/PNG и ERC делает scripts/render.sh через kicad-cli.
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"mpskp/internal/render"
+	"mpskp/internal/schgen"
+	"mpskp/internal/variant"
+)
+
+func main() {
+	var (
+		table = flag.String("table", "data/table-2025.yaml", "таблица вариантов из ТЗ")
+		stud  = flag.String("student", "", "students/<ник>/variant.yaml")
+		group = flag.String("group", "", "группа (вместо -student)")
+		m     = flag.Int("m", 0, "номер варианта (вместо -student)")
+		out   = flag.String("out", "build/out", "папка для результатов")
+		lib   = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
+		wks   = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
+	)
+	flag.Parse()
+	if err := run(*table, *stud, *group, *m, *out, *lib, *wks); err != nil {
+		fmt.Fprintln(os.Stderr, "ошибка:", err)
+		os.Exit(1)
+	}
+}
+
+func run(tablePath, studPath, group string, m int, out, libPath, wksPath string) error {
+	tb, err := variant.LoadTable(tablePath)
+	if err != nil {
+		return err
+	}
+	var st *variant.Student
+	if studPath != "" {
+		if st, err = variant.LoadStudent(studPath); err != nil {
+			return err
+		}
+	} else {
+		st = &variant.Student{Group: group, GroupFull: group, M: m}
+	}
+	p, err := variant.Compute(tb, st)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		return err
+	}
+	js, _ := json.MarshalIndent(p, "", "  ")
+	files := map[string]string{
+		"params.md":   render.Markdown(p),
+		"params.json": string(js) + "\n",
+		"vars.inc":    render.Asm(p),
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(out, name), []byte(body), 0o644); err != nil {
+			return err
+		}
+	}
+	fmt.Printf("%s M=%d → %s: params.md, params.json, vars.inc\n", p.Group, p.M, out)
+	for _, w := range p.Warnings {
+		fmt.Println("  ⚠", w)
+	}
+	if libPath == "" {
+		return nil
+	}
+	return schematic(p, st, out, libPath, wksPath)
+}
+
+// schematic рисует схему Э3 с нуля построителем (internal/schgen).
+func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath string) error {
+	lib, err := schgen.LoadLib(libPath)
+	if err != nil {
+		return err
+	}
+	v := schgen.Variant{
+		Cols: p.Cols, Rows: p.Rows, Anode: p.Indicator == "anode",
+		CS: schgen.CSPins{
+			Buf: p.Dev("Буфер (IDT7005)").CS, Y2: p.Dev("Регистр Y2").CS,
+			Kb: p.Dev("Клавиатура").CS, Ind: p.Dev("Индикатор").CS,
+		},
+		Y1: p.Y1Pin, Y2: p.Y2Pin, KbInt: p.KbInt, X2Int: p.X2Int,
+		Date: st.Date, Student: st.Name, Checker: st.Checker,
+	}
+	sh := schgen.Build(lib, v, fmt.Sprintf("%s-%d", p.Group, p.M))
+	writes := map[string]string{
+		"schematic.kicad_sch": sh.String(),
+		"schematic.kicad_pro": schgen.Project,
+	}
+	w, err := os.ReadFile(wksPath)
+	if err != nil {
+		return err
+	}
+	wks, ok := schgen.PatchWks(string(w), render.VariantLine(st.GroupFull, p.M))
+	if !ok {
+		fmt.Println("  ⚠ в рамке не нашлась строка «Группа …, Э3» — вариант в рамку не вписан")
+	}
+	writes["ramka.kicad_wks"] = wks
+	for name, body := range writes {
+		if err := os.WriteFile(filepath.Join(out, name), []byte(body), 0o644); err != nil {
+			return err
+		}
+	}
+	ind := map[bool]string{true: "общий анод", false: "общий катод"}[v.Anode]
+	fmt.Printf("  схема: %s (клавиатура %dx%d, %s)\n", filepath.Join(out, "schematic.kicad_sch"), p.Cols, p.Rows, ind)
+	return nil
+}

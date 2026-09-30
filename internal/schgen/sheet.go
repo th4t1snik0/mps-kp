@@ -1,0 +1,422 @@
+package schgen
+
+import (
+	"crypto/sha1"
+	"fmt"
+	"sort"
+	"strings"
+)
+
+const libName = "mps"
+
+// labelFont — шрифт меток цепей. При шаге выводов 2,54 мм и шрифте 1,27 черта
+// над ~{CS…} ложится на провод строкой выше и на печати пропадает.
+const labelFont = 1.1
+
+// Sheet — лист схемы, который собирается вызовами Sym/Wire/Label/...
+type Sheet struct {
+	lib     *Lib
+	used    map[string]*Node // lib_id → символ для lib_symbols
+	items   []*Node
+	wires   [][2]Pt
+	pinPts  []Pt
+	syms    []*Comp
+	seed    string
+	n       int
+	pwr     int
+	Title   TitleBlock
+	rootID  string
+	project string
+	Roles   map[string]*Comp // роль → элемент (заполняет построитель)
+}
+
+type TitleBlock struct {
+	Date     string
+	Comments map[int]string
+}
+
+func NewSheet(lib *Lib, seed string) *Sheet {
+	s := &Sheet{lib: lib, used: map[string]*Node{}, seed: seed, project: "schematic"}
+	s.rootID = s.uuid()
+	return s
+}
+
+// uuid — детерминированный (одинаковый вход → одинаковый файл, удобно сравнивать).
+func (s *Sheet) uuid() string {
+	s.n++
+	h := sha1.Sum([]byte(fmt.Sprintf("%s/%d", s.seed, s.n)))
+	h[6] = h[6]&0x0f | 0x50
+	h[8] = h[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
+}
+
+// Comp — размещённый символ (одна часть корпуса).
+type Comp struct {
+	Ref, Value string
+	Sym        string
+	At         Pt
+	Rot        int
+	Unit       int
+	pins       map[string]Pt
+	node       *Node
+}
+
+// Pin — точка подключения вывода num.
+func (c *Comp) Pin(num string) Pt {
+	p, ok := c.pins[num]
+	if !ok {
+		panic(fmt.Sprintf("%s (%s): нет вывода %s в части %d", c.Ref, c.Sym, num, c.Unit))
+	}
+	return p
+}
+
+// SymOpt — необязательные параметры размещения.
+type SymOpt struct {
+	Rot      int
+	Unit     int
+	RefAt    *Pt // абсолютное положение надписи позиционного обозначения
+	ValAt    *Pt
+	HideVal  bool
+	HideRef  bool
+	RefJust  string // left | right | ""
+	ValJust  string
+	Footnote string
+}
+
+// Sym ставит символ sym (имя в mps.kicad_sym) с обозначением ref.
+func (s *Sheet) Sym(sym, ref, value string, at Pt, o SymOpt) *Comp {
+	def, ok := s.lib.Syms[sym]
+	if !ok {
+		panic("нет символа " + sym)
+	}
+	if o.Unit == 0 {
+		o.Unit = 1
+	}
+	libID := libName + ":" + sym
+	if _, ok := s.used[libID]; !ok {
+		d := def.Clone()
+		d.Kids[1] = Q(libID)
+		s.used[libID] = d
+	}
+	c := &Comp{Ref: ref, Value: value, Sym: sym, At: at, Rot: o.Rot, Unit: o.Unit, pins: map[string]Pt{}}
+	n := L("symbol",
+		L("lib_id", Q(libID)),
+		L("at", F(at.X), F(at.Y), F(float64(o.Rot))),
+		L("unit", F(float64(o.Unit))),
+		L("exclude_from_sim", A("no")),
+		L("in_bom", A(yn(!strings.HasPrefix(ref, "#")))),
+		L("on_board", A(yn(!strings.HasPrefix(ref, "#")))),
+		L("dnp", A("no")),
+		L("uuid", Q(s.uuid())),
+	)
+	for _, p := range def.All("property") {
+		key := p.Arg(0)
+		val := p.Arg(1)
+		pat := p.Find("at")
+		pos := xform(at, 0, pat.Num(0), pat.Num(1))
+		if o.Rot != 0 {
+			pos = xform(at, o.Rot, pat.Num(0), pat.Num(1))
+		}
+		hide := p.Find("hide") != nil && p.Find("hide").Arg(0) == "yes"
+		just := ""
+		if ef := p.Find("effects"); ef != nil {
+			if j := ef.Find("justify"); j != nil {
+				just = j.Arg(0)
+			}
+		}
+		switch key {
+		case "Reference":
+			val = ref
+			if o.RefAt != nil {
+				pos = *o.RefAt
+			}
+			hide = o.HideRef || strings.HasPrefix(ref, "#")
+			if o.RefJust != "" {
+				just = o.RefJust
+			}
+		case "Value":
+			val = value
+			if o.ValAt != nil {
+				pos = *o.ValAt
+			}
+			hide = o.HideVal
+			if o.ValJust != "" {
+				just = o.ValJust
+			}
+		case "Footprint", "Datasheet", "Description":
+			hide = true
+		default:
+			if strings.HasPrefix(key, "ki_") {
+				continue
+			}
+			hide = true
+		}
+		pr := L("property", Q(key), Q(val), L("at", F(pos.X), F(pos.Y), F(float64(o.Rot%180))))
+		if hide {
+			pr.Kids = append(pr.Kids, L("hide", A("yes")))
+		}
+		// у символа, повёрнутого на 90/270, KiCad зеркалит выравнивание подписи
+		if o.Rot%180 != 0 {
+			switch just {
+			case "left":
+				just = "right"
+			case "right":
+				just = "left"
+			}
+		}
+		eff := L("effects", L("font", L("size", F(1.27), F(1.27))))
+		if just != "" && just != "center" {
+			eff.Kids = append(eff.Kids, L("justify", A(just)))
+		}
+		pr.Kids = append(pr.Kids, eff)
+		n.Kids = append(n.Kids, pr)
+	}
+	for _, p := range Pins(def) {
+		if p.Unit != 0 && p.Unit != o.Unit {
+			continue
+		}
+		pt := xform(at, o.Rot, p.X, p.Y)
+		c.pins[p.Num] = pt
+		if !p.Hidden {
+			s.pinPts = append(s.pinPts, pt)
+		}
+		n.Kids = append(n.Kids, L("pin", Q(p.Num), L("uuid", Q(s.uuid()))))
+	}
+	n.Kids = append(n.Kids, L("instances",
+		L("project", Q(s.project),
+			L("path", Q("/"+s.rootID),
+				L("reference", Q(ref)),
+				L("unit", F(float64(o.Unit)))))))
+	c.node = n
+	s.items = append(s.items, n)
+	s.syms = append(s.syms, c)
+	return c
+}
+
+func yn(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
+// Power ставит символ питания (+5V / GND) в точку at.
+func (s *Sheet) Power(kind string, at Pt, rot int) *Comp {
+	s.pwr++
+	return s.Sym(kind, fmt.Sprintf("#PWR%02d", s.pwr), kind, at, SymOpt{Rot: rot, HideVal: kind == "GND"})
+}
+
+// Wire — ломаная из отрезков.
+func (s *Sheet) Wire(pts ...Pt) {
+	for i := 0; i+1 < len(pts); i++ {
+		a, b := pts[i], pts[i+1]
+		if a.eq(b) {
+			continue
+		}
+		s.wires = append(s.wires, [2]Pt{a, b})
+	}
+}
+
+// splitWires режет провода в точках, где на середину провода попадает вывод или
+// конец другого провода: KiCad не считает вывод в середине провода подключённым.
+func (s *Sheet) splitWires() {
+	var cuts []Pt
+	cuts = append(cuts, s.pinPts...)
+	for _, w := range s.wires {
+		cuts = append(cuts, w[0], w[1])
+	}
+	var out [][2]Pt
+	for _, w := range s.wires {
+		var in []Pt
+		for _, c := range cuts {
+			if onSegInner(w[0], w[1], c) {
+				in = append(in, c)
+			}
+		}
+		sort.Slice(in, func(i, j int) bool {
+			return dist(w[0], in[i]) < dist(w[0], in[j])
+		})
+		prev := w[0]
+		for _, c := range in {
+			if !c.eq(prev) {
+				out = append(out, [2]Pt{prev, c})
+				prev = c
+			}
+		}
+		out = append(out, [2]Pt{prev, w[1]})
+	}
+	s.wires = out
+	for _, w := range s.wires {
+		s.items = append(s.items, L("wire",
+			L("pts", L("xy", F(w[0].X), F(w[0].Y)), L("xy", F(w[1].X), F(w[1].Y))),
+			L("stroke", L("width", F(0)), L("type", A("default"))),
+			L("uuid", Q(s.uuid()))))
+	}
+}
+
+func dist(a, b Pt) float64 { return abs(a.X-b.X) + abs(a.Y-b.Y) }
+
+// Bus — ломаная шины.
+func (s *Sheet) Bus(pts ...Pt) {
+	for i := 0; i+1 < len(pts); i++ {
+		a, b := pts[i], pts[i+1]
+		s.items = append(s.items, L("bus",
+			L("pts", L("xy", F(a.X), F(a.Y)), L("xy", F(b.X), F(b.Y))),
+			L("stroke", L("width", F(0)), L("type", A("default"))),
+			L("uuid", Q(s.uuid()))))
+	}
+}
+
+// BusEntry — наклонный отвод от точки at на (dx, dy).
+func (s *Sheet) BusEntry(at Pt, dx, dy float64) {
+	s.items = append(s.items, L("bus_entry",
+		L("at", F(at.X), F(at.Y)),
+		L("size", F(dx), F(dy)),
+		L("stroke", L("width", F(0)), L("type", A("default"))),
+		L("uuid", Q(s.uuid()))))
+}
+
+// Label — локальная метка цепи. right — текст влево от точки.
+func (s *Sheet) Label(name string, at Pt, right bool) {
+	ang, just := 0.0, "left"
+	if right {
+		ang, just = 180, "right"
+	}
+	s.items = append(s.items, L("label", Q(name),
+		L("at", F(at.X), F(at.Y), F(ang)),
+		L("effects", L("font", L("size", F(labelFont), F(labelFont))), L("justify", A(just), A("bottom"))),
+		L("uuid", Q(s.uuid()))))
+}
+
+// VLabel — метка на вертикальном проводе (текст снизу вверх).
+func (s *Sheet) VLabel(name string, at Pt) {
+	s.items = append(s.items, L("label", Q(name),
+		L("at", F(at.X), F(at.Y), F(90)),
+		L("effects", L("font", L("size", F(labelFont), F(labelFont))), L("justify", A("left"), A("bottom"))),
+		L("uuid", Q(s.uuid()))))
+}
+
+func (s *Sheet) NoConnect(at Pt) {
+	s.items = append(s.items, L("no_connect", L("at", F(at.X), F(at.Y)), L("uuid", Q(s.uuid()))))
+}
+
+func (s *Sheet) junction(at Pt) {
+	s.items = append(s.items, L("junction",
+		L("at", F(at.X), F(at.Y)), L("diameter", F(0)), L("color", F(0), F(0), F(0), F(0)),
+		L("uuid", Q(s.uuid()))))
+}
+
+// Text — свободный текст (примечания). Строки через \n.
+func (s *Sheet) Text(txt string, at Pt, size float64) {
+	s.items = append(s.items, L("text", Q(txt),
+		L("exclude_from_sim", A("no")),
+		L("at", F(at.X), F(at.Y), F(0)),
+		L("effects", L("font", L("size", F(size), F(size))), L("justify", A("left"), A("top"))),
+		L("uuid", Q(s.uuid()))))
+}
+
+// Graphic — произвольный графический примитив листа (полилиния/прямоугольник).
+func (s *Sheet) Graphic(n *Node) { s.items = append(s.items, n) }
+
+// autoJunctions ставит точки там, где сходятся ≥3 проводника или провод
+// упирается в середину другого провода (ГОСТ: точки на ветвлениях обязательны).
+func (s *Sheet) autoJunctions() {
+	type key struct{ x, y int64 }
+	k := func(p Pt) key { return key{int64(p.X*100 + 0.5), int64(p.Y*100 + 0.5)} }
+	deg := map[key]int{}
+	pos := map[key]Pt{}
+	for _, w := range s.wires {
+		for _, p := range w {
+			deg[k(p)]++
+			pos[k(p)] = p
+		}
+	}
+	for _, p := range s.pinPts {
+		if _, ok := deg[k(p)]; ok {
+			deg[k(p)]++
+		}
+	}
+	for kk, p := range pos {
+		for _, w := range s.wires {
+			if onSegInner(w[0], w[1], p) {
+				deg[kk] += 2
+			}
+		}
+	}
+	var keys []key
+	for kk, d := range deg {
+		if d >= 3 {
+			keys = append(keys, kk)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].x != keys[j].x {
+			return keys[i].x < keys[j].x
+		}
+		return keys[i].y < keys[j].y
+	})
+	for _, kk := range keys {
+		s.junction(pos[kk])
+	}
+}
+
+func onSegInner(a, b, p Pt) bool {
+	if p.eq(a) || p.eq(b) {
+		return false
+	}
+	const e = 0.01
+	if abs(a.X-b.X) < e && abs(p.X-a.X) < e {
+		return p.Y > min(a.Y, b.Y)+e && p.Y < max(a.Y, b.Y)-e
+	}
+	if abs(a.Y-b.Y) < e && abs(p.Y-a.Y) < e {
+		return p.X > min(a.X, b.X)+e && p.X < max(a.X, b.X)-e
+	}
+	return false
+}
+
+func abs(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
+}
+
+// String — готовый файл .kicad_sch.
+func (s *Sheet) String() string {
+	s.splitWires()
+	s.autoJunctions()
+	root := L("kicad_sch",
+		L("version", A("20260306")),
+		L("generator", Q("mpsgen")),
+		L("generator_version", Q("10.0")),
+		L("uuid", Q(s.rootID)),
+		L("paper", Q("A3")),
+	)
+	tb := L("title_block")
+	if s.Title.Date != "" {
+		tb.Kids = append(tb.Kids, L("date", Q(s.Title.Date)))
+	}
+	var ck []int
+	for k := range s.Title.Comments {
+		ck = append(ck, k)
+	}
+	sort.Ints(ck)
+	for _, k := range ck {
+		tb.Kids = append(tb.Kids, L("comment", F(float64(k)), Q(s.Title.Comments[k])))
+	}
+	root.Kids = append(root.Kids, tb)
+	ls := L("lib_symbols")
+	var ids []string
+	for id := range s.used {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		ls.Kids = append(ls.Kids, s.used[id])
+	}
+	root.Kids = append(root.Kids, ls)
+	root.Kids = append(root.Kids, s.items...)
+	root.Kids = append(root.Kids, L("sheet_instances", L("path", Q("/"), L("page", Q("1")))))
+	root.Kids = append(root.Kids, L("embedded_fonts", A("no")))
+	return root.String()
+}
