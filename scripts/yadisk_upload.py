@@ -10,6 +10,7 @@
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,14 +25,19 @@ PUBLIC = os.environ.get("YADISK_PUBLIC", "")
 
 def call(method, endpoint, **params):
     url = API + endpoint + ("?" + urllib.parse.urlencode(params) if params else "")
-    req = urllib.request.Request(url, method=method, headers={"Authorization": "OAuth " + TOKEN})
-    try:
-        with urllib.request.urlopen(req) as r:
-            body = r.read()
-            return r.status, json.loads(body) if body else {}
-    except urllib.error.HTTPError as e:
-        body = e.read()
-        return e.code, json.loads(body) if body else {}
+    for attempt in range(6):
+        req = urllib.request.Request(url, method=method, headers={"Authorization": "OAuth " + TOKEN})
+        try:
+            with urllib.request.urlopen(req) as r:
+                body = r.read()
+                return r.status, json.loads(body) if body else {}
+        except urllib.error.HTTPError as e:
+            body = e.read()
+            # 423 — ресурс занят (параллельный запуск пишет в ту же папку), 429/5xx — подождать и повторить
+            if e.code in (423, 429, 500, 502, 503) and attempt < 5:
+                time.sleep(3 * (attempt + 1))
+                continue
+            return e.code, json.loads(body) if body else {}
 
 
 def base_path():
