@@ -27,6 +27,12 @@ type Doc struct {
 	Fills      []Fill
 	appendixNo int
 	Style      DocStyle
+	toc        []tocEntry
+}
+
+type tocEntry struct {
+	level int
+	text  string
 }
 
 // NewDoc — документ; student — разобранный students/<ник>/pz/pzN.md (может быть nil).
@@ -74,9 +80,13 @@ func (d *Doc) H1(title string, num bool) {
 			dot = "."
 		}
 		d.w("\n# %d%s %s {-}\n\n", d.h1, dot, esc(title))
+		d.toc = append(d.toc, tocEntry{1, fmt.Sprintf("%d%s %s", d.h1, dot, title)})
 		return
 	}
 	d.w("\n# %s {-}\n\n", esc(title))
+	if title != "АННОТАЦИЯ" {
+		d.toc = append(d.toc, tocEntry{1, title})
+	}
 }
 
 // H2 — подраздел «N.M Название».
@@ -88,6 +98,7 @@ func (d *Doc) H2(title string) {
 		dot = "."
 	}
 	d.w("\n## %d.%d%s %s {-}\n\n", d.h1, d.h2, dot, esc(title))
+	d.toc = append(d.toc, tocEntry{2, fmt.Sprintf("%d.%d%s %s", d.h1, d.h2, dot, title)})
 }
 
 // H3 — пункт «N.M.K Название».
@@ -190,13 +201,27 @@ func (d *Doc) Fill(id, title, hint string) {
 	d.Styled("Fill", "✍ ДОПИШИ ("+id+" в students/…/pz/): "+esc(hint))
 }
 
-// TOC — оглавление (поле Word, обновляется при открытии документа) с новой страницы.
-func (d *Doc) TOC() {
-	d.w("\n```{=openxml}\n" +
-		`<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>СОДЕРЖАНИЕ</w:t></w:r></w:p>` +
-		`<w:p><w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \o "1-2" \h \z \u </w:instrText></w:r>` +
-		`<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>Оглавление: правой кнопкой → «Обновить поле» (Word обновляет само при открытии).</w:t></w:r>` +
-		`<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>` + "\n```\n\n")
+// TOC — оглавление: поле Word TOC (Word пересчитает с номерами страниц при открытии), внутри — готовый список
+// заголовков (его покажут LibreOffice и МойОфис, которые поля не обновляют). Список подставляется в Markdown().
+func (d *Doc) TOC() { d.w("\n```{=openxml}\n%s\n```\n\n", tocMarker) }
+
+const tocMarker = "<!--TOC-->"
+
+func (d *Doc) tocXML() string {
+	var b strings.Builder
+	b.WriteString(`<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>СОДЕРЖАНИЕ</w:t></w:r></w:p>`)
+	for i, e := range d.toc {
+		b.WriteString(fmt.Sprintf(`<w:p><w:pPr><w:pStyle w:val="TOC%d"/></w:pPr>`, e.level))
+		if i == 0 {
+			b.WriteString(`<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \o "1-2" \h \z \u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>`)
+		}
+		b.WriteString(`<w:r><w:t xml:space="preserve">` + xmlEsc(e.text) + `</w:t></w:r>`)
+		if i == len(d.toc)-1 {
+			b.WriteString(`<w:r><w:fldChar w:fldCharType="end"/></w:r>`)
+		}
+		b.WriteString(`</w:p>`)
+	}
+	return b.String()
 }
 
 // Num — число с десятичной запятой (ГОСТ): Num(3.19, 3) → «3,190».
@@ -209,12 +234,13 @@ func (d *Doc) Appendix(title string) string {
 	letter := []string{"А", "Б", "В", "Г", "Д", "Е", "Ж", "И", "К"}[d.appendixNo]
 	d.appendixNo++
 	d.w("\n# ПРИЛОЖЕНИЕ %s {-}\n\n", letter)
+	d.toc = append(d.toc, tocEntry{1, "ПРИЛОЖЕНИЕ " + letter + ". " + title})
 	d.Styled("Center", "**"+esc(title)+"**")
 	return letter
 }
 
 // Markdown — итоговый текст.
-func (d *Doc) Markdown() string { return d.b.String() }
+func (d *Doc) Markdown() string { return strings.Replace(d.b.String(), tocMarker, d.tocXML(), 1) }
 
 // ------------------------------------------------------------------ текст студента
 
