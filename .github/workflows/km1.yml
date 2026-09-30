@@ -97,18 +97,31 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: find build/ -name params.md -exec dirname {} \; | tr '\n' '\0' | xargs -0 scripts/publish.sh
 
-      - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
-        if: github.ref == 'refs/heads/main'
-        continue-on-error: true   # проблемы с диском не должны валить сборку
-        env:
-          YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
-          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
-        run: find build/ -name params.md -exec dirname {} \; | tr '\n' '\0' | xargs -0 python3 scripts/yadisk_upload.py
-
       - uses: actions/upload-artifact@v4
         with:
+          include-hidden-files: true   # build/…/.run — номер прогона для диска
           name: КМ-1 схема и перечень
           path: |
             build/
             !build/**/*.kicad_prl
           retention-days: 7
+
+  # Яндекс-диск — отдельной джобой: результаты в ветке results уже опубликованы основной, а загрузка на диск
+  # (с ожиданием блокировок, когда КМ-1/2/3 пишут одновременно) не задерживает её.
+  yadisk:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build
+      - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
+        env:
+          YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: find build/ -name params.md -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py

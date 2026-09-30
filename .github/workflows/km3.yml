@@ -103,20 +103,17 @@ jobs:
           SUMMARY: "0"   # сводку уже написал mpscode
         run: find build/ -mindepth 3 -maxdepth 3 -type d \( -name code -o -name pz2 \) -exec dirname {} \; | sort -u | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
 
-      - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
-        if: github.ref == 'refs/heads/main'
-        continue-on-error: true
-        env:
-          YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
-          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
-        run: find build/ -mindepth 3 -maxdepth 3 -type d \( -name code -o -name pz2 \) -exec dirname {} \; | sort -u | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
-
+      - run: touch build/.root   # корень артефакта — build/ (иначе при одном студенте срежется префикс <группа>/<M>)
       - uses: actions/upload-artifact@v4
         with:
+          include-hidden-files: true   # build/…/.run — номер прогона для диска
           name: КМ-3 программы и ПЗ2
           path: |
             build/**/code/
             build/**/pz2/
+            build/**/.run
+            build/**/run.txt
+            build/.root
           retention-days: 7
 
       - name: Итог по студентам
@@ -150,3 +147,23 @@ jobs:
             ls "$(dirname "$f")"/code/prog[123].a51 >/dev/null 2>&1 && bin/mpscode -nosim -student "$f" >/dev/null || true
           done
           scripts/mide_crosscheck.sh build build-ref
+
+  # Яндекс-диск — отдельной джобой: результаты в ветке results уже опубликованы основной, а загрузка на диск
+  # (с ожиданием блокировок, когда КМ-1/2/3 пишут одновременно) не задерживает её.
+  yadisk:
+    needs: code
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: code
+          path: build
+      - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
+        env:
+          YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: find build/ -mindepth 3 -maxdepth 3 -type d \( -name code -o -name pz2 \) -exec dirname {} \; | sort -u | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
