@@ -1,10 +1,10 @@
 // mpsgen — генератор материалов курсовой «МПС ч.2» под вариант.
 //
-//	mpsgen -student students/ivan/variant.yaml -out build/ivan
-//	mpsgen -group А-17 -m 16 -out build/try-16     # быстро прикинуть вариант
+//	mpsgen -student students/ivan/variant.yaml -render
+//	mpsgen -group А-17 -m 16 -name "Иванов И.И." -render   # любой вариант без файла студента
 //
-// На выходе: params.md, params.json, vars.inc, schematic.kicad_sch (+ .kicad_pro, ramka.kicad_wks).
-// PDF/PNG и ERC делает scripts/render.sh через kicad-cli.
+// Результат — в build/<группа>/<вариант>/ (например build/А-17-23/16/): params.md, params.json, vars.inc,
+// schematic.kicad_sch (+ .kicad_pro, ramka.kicad_wks); с -render ещё PDF/PNG и ERC (scripts/render.sh, kicad-cli).
 package main
 
 import (
@@ -12,7 +12,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"time"
 
 	"mpskp/internal/render"
 	"mpskp/internal/schgen"
@@ -25,36 +27,53 @@ func main() {
 		stud  = flag.String("student", "", "students/<ник>/variant.yaml")
 		group = flag.String("group", "", "группа (вместо -student)")
 		m     = flag.Int("m", 0, "номер варианта (вместо -student)")
-		out   = flag.String("out", "build/out", "папка для результатов")
+		out    = flag.String("out", "", "папка для результатов (по умолчанию <outroot>/<группа>/<вариант>)")
+		root   = flag.String("outroot", "build", "корень для результатов")
+		name   = flag.String("name", "", "Фамилия И.О. в рамку (вместо name в variant.yaml)")
+		year   = flag.String("year", "23", "год набора группы: А-12 → А-12-<year>")
+		doRend = flag.Bool("render", false, "после генерации запустить scripts/render.sh (PDF, PNG, ERC)")
 		lib   = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
 		wks   = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
 	)
 	flag.Parse()
-	if err := run(*table, *stud, *group, *m, *out, *lib, *wks); err != nil {
+	dir, err := run(*table, *stud, *group, *m, *name, *year, *root, *out, *lib, *wks)
+	if err == nil && *doRend {
+		cmd := exec.Command("scripts/render.sh", dir)
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		err = cmd.Run()
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "ошибка:", err)
 		os.Exit(1)
 	}
 }
 
-func run(tablePath, studPath, group string, m int, out, libPath, wksPath string) error {
+func run(tablePath, studPath, group string, m int, name, year, root, out, libPath, wksPath string) (string, error) {
 	tb, err := variant.LoadTable(tablePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var st *variant.Student
 	if studPath != "" {
 		if st, err = variant.LoadStudent(studPath); err != nil {
-			return err
+			return "", err
 		}
 	} else {
-		st = &variant.Student{Group: group, GroupFull: group, M: m}
+		st = &variant.Student{Group: group, M: m}
+	}
+	if name != "" {
+		st.Name = name
+	}
+	st.Defaults(year, time.Now())
+	if out == "" {
+		out = filepath.Join(root, st.Dir())
 	}
 	p, err := variant.Compute(tb, st)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := os.MkdirAll(out, 0o755); err != nil {
-		return err
+		return "", err
 	}
 	js, _ := json.MarshalIndent(p, "", "  ")
 	files := map[string]string{
@@ -64,17 +83,17 @@ func run(tablePath, studPath, group string, m int, out, libPath, wksPath string)
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(out, name), []byte(body), 0o644); err != nil {
-			return err
+			return "", err
 		}
 	}
-	fmt.Printf("%s M=%d → %s: params.md, params.json, vars.inc\n", p.Group, p.M, out)
+	fmt.Printf("%s, вариант %d, %s → %s: params.md, params.json, vars.inc\n", st.GroupFull, p.M, st.Name, out)
 	for _, w := range p.Warnings {
 		fmt.Println("  ⚠", w)
 	}
 	if libPath == "" {
-		return nil
+		return out, nil
 	}
-	return schematic(p, st, out, libPath, wksPath)
+	return out, schematic(p, st, out, libPath, wksPath)
 }
 
 // schematic рисует схему Э3 с нуля построителем (internal/schgen).

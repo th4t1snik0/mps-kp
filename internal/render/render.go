@@ -27,7 +27,7 @@ func Markdown(p *variant.Params) string {
 	w("# Параметры варианта: %s, M = %d (ТЗ %d)", p.Group, p.M, p.Year)
 	w("")
 	if p.Student != "" {
-		w("Студент: %s. Руководитель: %s.", p.Student, p.Checker)
+		w("Студент: %s, руководитель: %s", p.Student, p.Checker)
 		w("")
 	}
 	for _, x := range p.Warnings {

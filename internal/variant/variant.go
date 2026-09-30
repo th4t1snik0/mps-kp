@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -80,7 +81,7 @@ func LoadTable(path string) (*Table, error) {
 // Student — то, что человек пишет в students/<ник>/variant.yaml.
 type Student struct {
 	Group     string `yaml:"group"`      // «А-12» — ключ в таблице
-	GroupFull string `yaml:"group_full"` // «А-12-22» — для рамки
+	GroupFull string `yaml:"group_full"` // «А-12-23» — для рамки; пусто → группа + год набора (-year)
 	M         int    `yaml:"m"`
 	Name      string `yaml:"name"`    // «Рязанцев И.В.»
 	Checker   string `yaml:"checker"` // «Михалин С.Н.»
@@ -96,11 +97,28 @@ func LoadStudent(path string) (*Student, error) {
 	if err := yaml.Unmarshal(b, &s); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if s.GroupFull == "" {
-		s.GroupFull = s.Group
-	}
 	return &s, nil
 }
+
+// Defaults дописывает то, что не задано: полное имя группы по году набора
+// («А-12» + «23» → «А-12-23»), проверяющего и дату (сегодня).
+func (s *Student) Defaults(yearSuffix string, now time.Time) {
+	if s.GroupFull == "" {
+		s.GroupFull = s.Group
+		if yearSuffix != "" {
+			s.GroupFull += "-" + yearSuffix
+		}
+	}
+	if s.Checker == "" {
+		s.Checker = "Михалин С.Н."
+	}
+	if s.Date == "" {
+		s.Date = now.Format("02.01.06")
+	}
+}
+
+// Dir — папка результатов: <группа>/<вариант>, например «А-12-23/14».
+func (s *Student) Dir() string { return fmt.Sprintf("%s/%d", s.GroupFull, s.M) }
 
 // Pin — вывод порта МК, например P2.5.
 type Pin struct {

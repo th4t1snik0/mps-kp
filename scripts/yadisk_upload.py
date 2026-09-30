@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Загрузка результатов сборки на Яндекс-диск: <папка по ссылке>/<вариант>/<файлы>.
+"""Загрузка результатов сборки на Яндекс-диск: <папка по ссылке>/<группа>/<вариант>/<файлы>.
 
-    YADISK_TOKEN=… YADISK_PUBLIC=https://disk.yandex.ru/d/… scripts/yadisk_upload.py build/try-А-12-14 …
+    YADISK_TOKEN=… YADISK_PUBLIC=https://disk.yandex.ru/d/… scripts/yadisk_upload.py build/А-12-23/14 …
 
 Папку назначения задаём публичной ссылкой (YADISK_PUBLIC): скрипт сам находит её путь на диске
 владельца токена. Недостающие папки создаются, существующие файлы перезаписываются.
@@ -86,8 +86,11 @@ def main(dirs):
         d = d.rstrip("/")
         if not os.path.isfile(os.path.join(d, "params.md")):
             continue
-        name = os.path.basename(d)
-        mkdir(f"{base}/{name}")
+        name = os.path.relpath(d, "build") if d.startswith("build/") else os.path.basename(d)
+        cur = base
+        for part in name.split("/"):  # группа, затем вариант — создаём недостающие
+            cur = f"{cur}/{part}"
+            mkdir(cur)
         n = 0
         for f in KEEP:
             p = os.path.join(d, f)

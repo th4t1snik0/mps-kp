@@ -1,7 +1,10 @@
-# make student S=ivan        — собрать одного
-# make try G=А-17 M=16        — прикинуть любой вариант без файла студента
+# make try G=А-17 M=16 FIO="Иванов И.И."   — любой вариант → build/А-17-23/16/
+# make student S=<ник>                      — из students/<ник>/variant.yaml → build/<группа>/<вариант>/
 # make test
+# Y — год набора группы (А-12 → А-12-$(Y)).
 TABLE ?= data/table-2025.yaml
+Y     ?= 23
+FIO   ?=
 
 bin/mpsgen: $(shell find cmd internal -name '*.go')
 	go build -o bin/mpsgen ./cmd/mpsgen
@@ -10,12 +13,10 @@ test:
 	go test ./...
 
 student: bin/mpsgen
-	./bin/mpsgen -table $(TABLE) -student students/$(S)/variant.yaml -out build/$(S)
-	scripts/render.sh build/$(S)
+	./bin/mpsgen -table $(TABLE) -year $(Y) -student students/$(S)/variant.yaml -render
 
 try: bin/mpsgen
-	./bin/mpsgen -table $(TABLE) -group $(G) -m $(M) -out build/try-$(G)-$(M)
-	scripts/render.sh build/try-$(G)-$(M)
+	./bin/mpsgen -table $(TABLE) -year $(Y) -group "$(G)" -m $(M) -name "$(FIO)" -render
 
 # пересобрать masters/lib/mps.kicad_sym из библиотек KiCad (нужно только при правке cmd/mpslib)
 KICAD_SYMBOLS ?= /Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols

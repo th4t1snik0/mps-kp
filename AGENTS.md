@@ -13,7 +13,7 @@
 ## Главные правила
 
 1. **Числа варианта не считать в уме.** Всё (CS, адреса, биты, таймеры, какие программы писать)
-   считает генератор: `make try G=<группа> M=<номер>` → `build/try-<группа>-<M>/params.md`.
+   считает генератор: `make try G=<группа> M=<номер>` → `build/<группа>-23/<M>/params.md`.
 2. **Схему Э3 не рисовать руками с нуля** — её строит `internal/schgen`. Если что-то не так в схеме —
    правь код построителя (для всех), а не свой `.kicad_sch` (только для себя; допустимо, но отметь в сессии).
 3. **Правила ТЗ важнее примеров прошлых лет.** ТЗ и методичка — `docs/source/`. Работы прошлых лет
@@ -45,20 +45,21 @@
 
 ```sh
 make test                        # go test ./... (netlist-тест схемы требует kicad-cli, без него пропускается)
-make try G=А-12 M=14             # любой вариант → build/try-А-12-14/
-make student S=<ник>             # из students/<ник>/variant.yaml → build/<ник>/
+make try G=А-12 M=14 FIO="Фамилия И.О."   # любой вариант → build/А-12-23/14/  (Y=23 — год набора)
+make student S=<ник>             # из students/<ник>/variant.yaml → build/<группа>/<вариант>/
 make lib                         # пересобрать masters/lib/mps.kicad_sym (только при правке cmd/mpslib)
-scripts/render.sh build/<папка>  # только PDF/PNG/ERC по готовому .kicad_sch
+scripts/render.sh build/<группа>/<вариант>  # только PDF/PNG/ERC по готовому .kicad_sch
 ```
 
 Нужно: Go 1.23+, KiCad 10 (`kicad-cli`), poppler (`pdftoppm`), шрифт GOST type A (`fonts/` — поставить в систему).
 macOS: `brew install --cask kicad && brew install go poppler`. Ubuntu: PPA `ppa:kicad/kicad-10.0-releases`.
-Без установки: GitHub → Actions → build → Run workflow (группа + M) → сводка на странице запуска
-(картинка, ERC, параметры). Всё, что сделала джоба, — в ветке `results` (`results/<папка>/…`, оглавление в её README).
+Без установки: GitHub → Actions → build → Run workflow (группа, M, Фамилия И.О., год набора) → сводка на странице запуска
+(картинка, ERC, параметры). Всё, что сделала джоба, — в ветке `results` по папкам `<группа>/<вариант>/` (оглавление в её README).
 Ветку `results` пишет только CI (`scripts/publish.sh`), руками не править. Копия — на Яндекс-диск
-(`scripts/yadisk_upload.py`, папка MPS-SHEMAS; нужен секрет `YADISK_TOKEN`, см. README).
+(`scripts/yadisk_upload.py`, `MPS-SHEMAS/<группа>/<вариант>/`; нужен секрет `YADISK_TOKEN`, см. README).
 
-Что получается в `build/<папка>/`: `params.md` (все параметры варианта и ответы на п. 2.3 ТЗ), `params.json`,
+Что получается в `build/<группа>/<вариант>/` (группа с годом набора: `А-12-23`; в рамке — «Группа А-12-23, Вариант 14, Э3»,
+Разраб. — ФИО, Пров. — Михалин С.Н., дата — день сборки): `params.md` (все параметры варианта и ответы на п. 2.3 ТЗ), `params.json`,
 `vars.inc` (EQU/BIT для асма), `schematic.kicad_sch` (открывается в KiCad 10), `schematic.pdf/png`,
 `erc-summary.txt` (**должен быть пустым**).
 

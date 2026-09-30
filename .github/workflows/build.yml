@@ -30,6 +30,14 @@ on:
         description: "Номер варианта M (1..30)"
         required: false
         default: ""
+      fio:
+        description: "Фамилия И.О. — в рамку (Разраб.)"
+        required: false
+        default: ""
+      year:
+        description: "Год набора группы: А-12 → А-12-<год>"
+        required: false
+        default: "23"
 
 # новый пуш отменяет ещё идущий прогон той же ветки; запуски Run workflow с разными вариантами не мешают друг другу
 concurrency:
@@ -61,7 +69,12 @@ jobs:
 
       - name: Один вариант (Run workflow)
         if: github.event_name == 'workflow_dispatch' && inputs.group != '' && inputs.m != ''
-        run: make try G="${{ inputs.group }}" M="${{ inputs.m }}"
+        env:
+          G: ${{ inputs.group }}
+          M: ${{ inputs.m }}
+          FIO: ${{ inputs.fio }}
+          Y: ${{ inputs.year }}
+        run: make try G="$G" M="$M" FIO="$FIO" Y="${Y:-23}"
 
       - name: Все студенты
         if: github.event_name == 'push' || inputs.group == ''
@@ -72,9 +85,7 @@ jobs:
 
       - name: Результаты → ветка results + сводка запуска
         if: github.ref == 'refs/heads/main'
-        run: |
-          dirs=(build/*/)
-          scripts/publish.sh "${dirs[@]%/}"
+        run: find build/ -name params.md -exec dirname {} \; | tr '\n' '\0' | xargs -0 scripts/publish.sh
 
       - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
         if: github.ref == 'refs/heads/main'
@@ -82,7 +93,7 @@ jobs:
         env:
           YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
           YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
-        run: python3 scripts/yadisk_upload.py build/*/
+        run: find build/ -name params.md -exec dirname {} \; | tr '\n' '\0' | xargs -0 python3 scripts/yadisk_upload.py
 
       - uses: actions/upload-artifact@v4
         with:

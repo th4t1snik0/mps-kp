@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Выкладывает результаты сборки в ветку results и пишет сводку запуска (GitHub Actions).
-# Использование: scripts/publish.sh build/<папка> [build/<папка> ...]
+# Использование: scripts/publish.sh build/<группа>/<вариант> [...]
 #
-# Ветка results — только сгенерированные файлы: results/<папка>/{schematic.png,pdf,kicad_sch,…, params.md, vars.inc}
+# Ветка results — только сгенерированные файлы: <группа>/<вариант>/{schematic.png,pdf,kicad_sch,…, params.md, vars.inc}
 # + README.md с оглавлением. Каждый раз перезаписывается одним коммитом (история не нужна, репо не пухнет).
 # Папки, которых нет в этом запуске, сохраняются из прошлого содержимого ветки.
 set -euo pipefail
@@ -29,9 +29,11 @@ for attempt in 1 2 3; do
   if git fetch -q origin results 2>/dev/null; then
     lease="$(git rev-parse FETCH_HEAD)"
     GIT_INDEX_FILE="$work/idx0" git --work-tree="$work/r" checkout FETCH_HEAD -- . 2>/dev/null || true
+    # старая плоская раскладка (<папка>/params.md) — убрать, теперь только <группа>/<вариант>/
+    find "$work/r" -mindepth 2 -maxdepth 2 -name params.md -exec dirname {} \; | xargs -r rm -rf
   fi
   for d in "$@"; do
-    name="$(basename "$d")"
+    name="${d#build/}"
     rm -rf "$work/r/$name" && mkdir -p "$work/r/$name"
     for f in "${keep[@]}"; do [ -f "$d/$f" ] && cp "$d/$f" "$work/r/$name/"; done
   done
@@ -41,12 +43,11 @@ for attempt in 1 2 3; do
     echo
     echo "Ветка обновляется автоматически (Actions → build). Руками не править. Исходники — ветка \`main\`."
     echo
-    echo "| Вариант | Схема | Параметры | Асм | ERC |"
-    echo "| --- | --- | --- | --- | --- |"
-    for p in "$work"/r/*/; do
-      n="$(basename "$p")"
-      e="чисто"; [ -s "$p/erc-summary.txt" ] && e="⚠ есть замечания"
-      echo "| $n | [PNG]($n/schematic.png) · [PDF]($n/schematic.pdf) · [KiCad]($n/schematic.kicad_sch) | [params.md]($n/params.md) | [vars.inc]($n/vars.inc) | $e |"
+    echo "| Группа | Вариант | Схема | Параметры | Асм | ERC |"
+    echo "| --- | --- | --- | --- | --- | --- |"
+    (cd "$work/r" && find . -name params.md | sed 's|^\./||; s|/params.md$||' | sort -t/ -k1,1 -k2,2n) | while read -r n; do
+      e="чисто"; [ -s "$work/r/$n/erc-summary.txt" ] && e="⚠ есть замечания"
+      echo "| ${n%%/*} | ${n#*/} | [PNG]($n/schematic.png) · [PDF]($n/schematic.pdf) · [KiCad]($n/schematic.kicad_sch) | [params.md]($n/params.md) | [vars.inc]($n/vars.inc) | $e |"
     done
   } > "$work/r/README.md"
 
@@ -65,9 +66,10 @@ done
 # сводка на странице запуска; картинка — по коммиту, а не по ветке (raw-CDN кэширует ветку минутами)
 raw="https://raw.githubusercontent.com/$repo/$c"
 for d in "$@"; do
-  n="$(basename "$d")"
+  n="${d#build/}"
   {
     echo "## $n"
+    grep -m1 "^Студент:" "$d/params.md" || true
     if [ -s "$d/erc-summary.txt" ]; then echo "⚠ ERC:"; echo '```'; cat "$d/erc-summary.txt"; echo '```'; else echo "ERC: чисто"; fi
     echo
     echo "[PDF]($tree/$n/schematic.pdf) · [KiCad]($tree/$n/schematic.kicad_sch) · [vars.inc]($tree/$n/vars.inc) · [все файлы](https://github.com/$repo/tree/results/$n)"
