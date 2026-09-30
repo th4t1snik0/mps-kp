@@ -378,13 +378,15 @@ func (b *builder) idt() {
 	for i, n := range dl {
 		b.tapLeft(u.Pin(n), xBI, fmt.Sprintf("AD%d", i))
 	}
-	// R/WL, BUSYL, SEML → +5 В (левый порт только читает; BUSY-вход в slave не блокирует)
+	// R/WL ← WR: МК и читает буфер, и пишет в него (процедура записи — данные из A)
+	b.tapLeft(u.Pin("61"), xBI, nWR)
+	// BUSYL, SEML → +5 В (BUSY-вход в slave не блокирует, семафоры не используются)
 	xl := 185.42
-	for _, n := range []string{"61", "42", "60"} {
+	for _, n := range []string{"42", "60"} {
 		b.Wire(u.Pin(n), Pt{xl, u.Pin(n).Y})
 	}
-	b.Wire(Pt{xl, u.Pin("61").Y}, Pt{xl, u.Pin("60").Y})
-	b.Power("+5V", Pt{xl, u.Pin("61").Y}, 90)
+	b.Wire(Pt{xl, u.Pin("42").Y}, Pt{xl, u.Pin("60").Y})
+	b.Power("+5V", Pt{xl, u.Pin("42").Y}, 90)
 	// M/S → GND: режим slave, арбитраж BUSY выключен
 	ms := u.Pin("40")
 	b.Wire(ms, Pt{xl, ms.Y})
@@ -402,29 +404,37 @@ func (b *builder) idt() {
 		b.gnd(Pt{xl, u.Pin("56").Y + 1.27})
 	}
 
-	// правый порт — внешнее устройство (X2), запись стробом WR МК
+	// правый порт — «почтовый ящик» внешнего устройства (ТЗ: независимая 8-разрядная шина со стробом записи):
+	// адрес зашит единицами (последняя ячейка окна, вне кольца), CER = 0, OER = 1 — порт только пишет,
+	// запись — стробом X2stb (R/WR), он же — прерывание МК; в обработчике МК читает ящик левым портом
+	// и кладёт отсчёт в кольцо процедурой записи. Указатели и флаги ведёт МК.
 	xr := 215.9
-	b.tapRight(u.Pin("22"), xBR, nCSbuf)
-	b.tapRight(u.Pin("20"), xBR, nWR)
+	cer := u.Pin("22")
+	b.Wire(cer, Pt{xr, cer.Y})
+	b.Power("GND", Pt{xr, cer.Y}, 90)
+	b.tapRight(u.Pin("20"), xBR, "~{"+b.v.X2Int+"}")
 	oer := u.Pin("19")
-	b.Wire(oer, Pt{xr, oer.Y})
-	b.Power("+5V", Pt{xr, oer.Y}, 270)
+	b.Wire(oer, Pt{xr - 2.54, oer.Y})
+	b.Power("+5V", Pt{xr - 2.54, oer.Y}, 270)
 	b.Wire(u.Pin("39"), Pt{xr, u.Pin("39").Y}, Pt{xr, u.Pin("21").Y})
 	b.Wire(u.Pin("21"), Pt{xr, u.Pin("21").Y})
 	b.Power("+5V", Pt{xr, u.Pin("39").Y}, 270)
 	b.nc(u.Pin("38"))
-	for i := 0; i <= 10; i++ {
-		b.tapRight(u.Pin(strconv.Itoa(37-i)), xBR, fmt.Sprintf("A%d", i))
-	}
-	if b.v.Decoder {
-		b.tapRight(u.Pin("26"), xBR, "A11")
-		b.tapRight(u.Pin("25"), xBR, "A12")
-	} else {
+	last := 12
+	if !b.v.Decoder {
+		last = 10 // A11R, A12R → GND (буфер ≤ 2 КБ)
 		b.Wire(u.Pin("26"), Pt{xr, u.Pin("26").Y})
 		b.Wire(u.Pin("25"), Pt{xr, u.Pin("25").Y}, Pt{xr, u.Pin("26").Y})
 		b.Wire(Pt{xr, u.Pin("25").Y}, Pt{xr, u.Pin("25").Y + 1.27})
 		b.gnd(Pt{xr, u.Pin("25").Y + 1.27})
 	}
+	top, bot := u.Pin("37"), u.Pin(strconv.Itoa(37-last))
+	for i := 0; i <= last; i++ {
+		p := u.Pin(strconv.Itoa(37 - i))
+		b.Wire(p, Pt{xr, p.Y})
+	}
+	b.Wire(Pt{xr, top.Y}, Pt{xr, bot.Y})
+	b.Power("+5V", Pt{xr, top.Y}, 270)
 	dr := []string{"10", "11", "12", "14", "15", "16", "17", "18"}
 	for i, n := range dr {
 		b.tapRight(u.Pin(n), xBR, fmt.Sprintf("X2_%d", i))
@@ -476,7 +486,7 @@ func (b *builder) conn(role, which, sym, ref string, at Pt) *Comp {
 
 func (b *builder) placeConnXY() {
 	const bx = 250.19 // шины к разъёмам
-	// XS2: строб X2 → вход прерывания, данные X2 → правый порт IDT
+	// XS2: строб X2 → вход прерывания и R/WR правого порта IDT, данные X2 → правый порт IDT
 	c := b.conn("xsX2", "x2", "CONN_X2", "XS2", Pt{xConn, yXS2})
 	stb := cp(c, 1)
 	e := Pt{xBR + 2.54, stb.Y}

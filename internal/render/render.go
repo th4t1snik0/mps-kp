@@ -73,6 +73,8 @@ func Markdown(p *variant.Params) string {
 	buf := p.Dev("Буфер (IDT7005)")
 	w("")
 	w("Буфер: %d байт, ячейки %s–%s, после %s указатель заворачивается на начало.", p.V, H(buf.Base), H(buf.Base+p.V-1), H(buf.Base+p.V-1))
+	w("Отсчёт X2 внешнее устройство пишет в ячейку-«почтовый ящик» %s (правый порт IDT7005, адрес зашит единицами); "+
+		"по его стробу (прерывание) МК читает ящик и кладёт отсчёт в кольцо процедурой записи.", H(buf.Base+buf.WinSize-1))
 	w("")
 	w("## Внутренняя память")
 	w("")
@@ -132,6 +134,7 @@ func Asm(p *variant.Params) string {
 	w("BUF_START    EQU %s        ; первая ячейка буфера, CS %s", H(buf.Base), buf.CS)
 	w("BUF_END      EQU %s        ; первая ячейка ЗА буфером (точка заворота)", H(buf.Base+p.V))
 	w("BUF_SIZE     EQU %d", p.V)
+	w("BUF_MBOX     EQU %s        ; «почтовый ящик»: сюда внешнее устройство пишет X2 правым портом (строб X2 = прерывание)", H(buf.Base+buf.WinSize-1))
 	w("")
 	w("; --- клавиатура %s и индикатор ---", p.Keyboard)
 	w("KB_COLS      EQU %d             ; столбцы Col1…Col%d — биты D0…D%d при записи в ADR_KB (0 — столбец опрашивается)", p.Cols, p.Cols, p.Cols-1)
