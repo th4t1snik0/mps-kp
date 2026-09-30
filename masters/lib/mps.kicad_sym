@@ -881,7 +881,7 @@
 				)
 			)
 		)
-		(property "Description" "8 D-защёлок с третьим состоянием (КР1554ИР22)"
+		(property "Description" "8 D-защёлок с третьим состоянием (отеч. аналог КР1554ИР33; ИР22 = 74AC373 — другая цоколёвка)"
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1738,7 +1738,7 @@
 				)
 			)
 		)
-		(property "Description" "2×4 буфера с третьим состоянием (КР1554АП4)"
+		(property "Description" "2×4 буфера с третьим состоянием (КР1554АП5; АП4 = 74AC241 — 2OE активен 1)"
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
