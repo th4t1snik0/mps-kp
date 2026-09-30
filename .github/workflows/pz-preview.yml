@@ -1,0 +1,49 @@
+name: ПЗ превью (страницы картинками)
+
+# Для проверки вёрстки ПЗ: собирает docx студента, рендерит LibreOffice → PDF → PNG постранично + обзорный лист.
+# Только по кнопке (Actions → «ПЗ превью» → Run workflow): LibreOffice ставится ~1–2 мин, в основные джобы не входит.
+on:
+  workflow_dispatch:
+    inputs:
+      student:
+        description: "Ник студента (папка в students/)"
+        required: true
+        default: "ivan"
+      doc:
+        description: "pz1 | pz2"
+        required: true
+        default: "pz2"
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: pandoc, LibreOffice, poppler, шрифты (Liberation — метрики Times New Roman / Arial)
+        run: |
+          curl -sSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.11/pandoc-3.11-1-amd64.deb
+          sudo dpkg -i /tmp/pandoc.deb >/dev/null
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libreoffice-writer-nogui poppler-utils fonts-liberation >/dev/null
+      - name: Сборка и рендер
+        env:
+          S: ${{ inputs.student }}
+          DOC: ${{ inputs.doc }}
+        run: |
+          go build -o bin/mpspz ./cmd/mpspz
+          bin/mpspz -student "students/$S/variant.yaml" -doc "$DOC"
+          d=$(dirname "$(ls build/*/*/$DOC/*.docx | head -1)")
+          soffice --headless --convert-to pdf --outdir "$d" "$d"/*.docx >/dev/null
+          mkdir -p preview
+          pdftoppm -r 80 -png "$d"/*.pdf preview/p
+          go run ./scripts/montage 6 preview/sheet.png 'preview/p-*.png'
+          cp "$d"/*.pdf preview/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview
+          path: preview/
+          retention-days: 3
