@@ -99,20 +99,46 @@ def main(dirs):
         for part in name.split("/"):  # группа, затем вариант — создаём недостающие
             cur = f"{cur}/{part}"
             mkdir(cur)
+        # прогон-N: номер как в ветке results (publish.sh пишет .run), иначе — следующий после последнего на диске
+        run = 0
+        try:
+            run = int(open(os.path.join(d, ".run")).read().strip())
+        except (OSError, ValueError):
+            pass
+        if run <= 0 or exists(f"{cur}/прогон-{run}"):
+            run = max(run, last_run(cur) + 1)
+        dst = f"{cur}/прогон-{run}"
+        mkdir(dst)
         n = 0
-        for f in KEEP:
+        for f in KEEP + ["run.txt"]:
             p = os.path.join(d, f)
             if os.path.isfile(p):
-                upload(p, f"{base}/{name}/{f}")
+                upload(p, f"{dst}/{f}")
                 n += 1
         if os.path.isdir(code):  # проверка программ: файлы для робота, отчёт, листинги
-            mkdir(f"{base}/{name}/code")
+            mkdir(f"{dst}/code")
             for f in sorted(os.listdir(code)):
                 p = os.path.join(code, f)
                 if os.path.isfile(p):
-                    upload(p, f"{base}/{name}/code/{f}")
+                    upload(p, f"{dst}/code/{f}")
                     n += 1
-        print(f"яндекс-диск: {base}/{name} — {n} файлов")
+        print(f"яндекс-диск: {dst} — {n} файлов")
+
+
+def exists(path):
+    code, _ = call("GET", "/resources", path=path, fields="name")
+    return code == 200
+
+
+def last_run(path):
+    """Наибольший N среди папок «прогон-N» в path (0 — нет)."""
+    code, d = call("GET", "/resources", path=path, limit=1000, fields="_embedded.items.name")
+    best = 0
+    for it in (d.get("_embedded", {}).get("items", []) if code == 200 else []):
+        name = it.get("name", "")
+        if name.startswith("прогон-") and name[len("прогон-"):].isdigit():
+            best = max(best, int(name[len("прогон-"):]))
+    return best
 
 
 if __name__ == "__main__":

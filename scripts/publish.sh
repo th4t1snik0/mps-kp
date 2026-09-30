@@ -2,10 +2,12 @@
 # Выкладывает результаты сборки в ветку results и пишет сводку запуска (GitHub Actions).
 # Использование: scripts/publish.sh build/<группа>/<вариант> [...]
 #
-# Ветка results — только сгенерированные файлы: <группа>/<вариант>/{schematic.png,pdf,kicad_sch,…, params.md, vars.inc,
-# code/ — проверка программ} + README.md с оглавлением. Каждый раз перезаписывается одним коммитом (история не нужна).
-# Папки и файлы, которых нет в этом запуске, сохраняются из прошлого содержимого ветки: workflow build обновляет
-# схему и не трогает code/, workflow code — наоборот. SUMMARY=0 — не писать сводку запуска (её пишет mpscode).
+# Ветка results — только сгенерированные файлы: <группа>/<вариант>/прогон-N/{schematic.png,pdf,…, params.md, vars.inc,
+# code/ — проверка программ, run.txt — откуда прогон} + README.md с оглавлением. Коммит один (история ветки не нужна),
+# но прошлые прогоны не перетираются: каждый запуск кладёт вариант в новую папку прогон-N (N = последний + 1).
+# Номер пишется в build/<группа>/<вариант>/.run — по нему yadisk_upload.py кладёт на диск в папку с тем же номером.
+# Файлы в корне варианта (раскладка до прогонов) при первой публикации переезжают в прогон-1.
+# SUMMARY=0 — не писать сводку запуска (её пишет mpscode).
 set -euo pipefail
 
 # только папки, где генератор отработал
@@ -36,11 +38,22 @@ for attempt in 1 2 3; do
   fi
   for d in "$@"; do
     name="${d#build/}"
-    mkdir -p "$work/r/$name"
-    if [ -f "$d/params.md" ]; then
-      for f in "${keep[@]}"; do rm -f "$work/r/$name/$f"; [ -f "$d/$f" ] && cp "$d/$f" "$work/r/$name/"; done
+    v="$work/r/$name"
+    mkdir -p "$v"
+    # раскладка до прогонов: файлы прямо в папке варианта → прогон-1
+    if ! ls -d "$v"/прогон-* >/dev/null 2>&1 && [ -n "$(ls -A "$v")" ]; then
+      mkdir "$v/прогон-1" && find "$v" -mindepth 1 -maxdepth 1 ! -name прогон-1 -exec mv {} "$v/прогон-1/" \;
     fi
-    if [ -d "$d/code" ]; then rm -rf "$work/r/$name/code" && cp -r "$d/code" "$work/r/$name/code"; fi
+    last="$(ls -d "$v"/прогон-* 2>/dev/null | sed 's|.*/прогон-||' | sort -n | tail -1)"
+    n=$(( ${last:-0} + 1 ))
+    out="$v/прогон-$n"
+    mkdir -p "$out"
+    for f in "${keep[@]}"; do [ -f "$d/$f" ] && cp "$d/$f" "$out/"; done
+    [ -d "$d/code" ] && cp -r "$d/code" "$out/code"
+    printf 'прогон %s\nworkflow: %s, запуск %s\nкоммит: %s\nдата: %s\n' "$n" "${GITHUB_WORKFLOW:-local}" \
+      "${GITHUB_SERVER_URL:-}/${repo}/actions/runs/${GITHUB_RUN_ID:-}" "${GITHUB_SHA:-}" "$(date -u '+%Y-%m-%d %H:%M UTC')" > "$d/run.txt"
+    cp "$d/run.txt" "$out/"
+    echo "$n" > "$d/.run"
   done
   # оглавление
   {
@@ -48,21 +61,29 @@ for attempt in 1 2 3; do
     echo
     echo "Ветка обновляется автоматически (Actions → build). Руками не править. Исходники — ветка \`main\`."
     echo
-    echo "| Группа | Вариант | Схема | Перечень | Параметры | Асм | ERC | Код (КМ-3) |"
+    echo "Каждый запуск кладёт вариант в новую папку \`прогон-N\` — прошлые не перетираются. В таблице — последние."
+    echo
+    echo "| Группа | Вариант | Прогонов | Схема (последняя) | Перечень | Параметры | ERC | Код КМ-3 (последний) |"
     echo "| --- | --- | --- | --- | --- | --- | --- | --- |"
-    (cd "$work/r" && { find . -mindepth 3 -maxdepth 3 -name params.md; find . -mindepth 4 -maxdepth 4 -path '*/code/report.md'; } |
-      sed 's|^\./||; s|/params.md$||; s|/code/report.md$||' | sort -u | sort -t/ -k1,1 -k2,2n) | while read -r n; do
-      sch="—" pe="—" par="—" asm="—" e="—" code="—"
-      if [ -f "$work/r/$n/params.md" ]; then
-        sch="[PNG]($n/schematic.png) · [PDF]($n/schematic.pdf) · [KiCad]($n/schematic.kicad_sch)"
-        pe="[ПЭ3]($n/perechen.pdf) · [КМ-1]($n/perechen-km1.pdf)"
-        par="[params.md]($n/params.md)" asm="[vars.inc]($n/vars.inc)"
-        e="чисто"; [ -s "$work/r/$n/erc-summary.txt" ] && e="⚠ есть замечания"
+    (cd "$work/r" && find . -mindepth 3 -maxdepth 3 -type d -name 'прогон-*' | sed 's|^\./||; s|/прогон-[0-9]*$||' |
+      sort -u | sort -t/ -k1,1 -k2,2n) | while read -r n; do
+      runs="$(ls -d "$work/r/$n"/прогон-* | sed 's|.*/прогон-||' | sort -n)"
+      sch="—" pe="—" par="—" e="—" code="—" s="" c=""
+      for k in $runs; do
+        [ -f "$work/r/$n/прогон-$k/params.md" ] && s="$k"
+        [ -f "$work/r/$n/прогон-$k/code/report.md" ] && c="$k"
+      done
+      if [ -n "$s" ]; then
+        p="$n/прогон-$s"
+        sch="[прогон $s]($p): [PNG]($p/schematic.png) · [PDF]($p/schematic.pdf) · [KiCad]($p/schematic.kicad_sch)"
+        pe="[ПЭ3]($p/perechen.pdf) · [КМ-1]($p/perechen-km1.pdf)"
+        par="[params.md]($p/params.md) · [vars.inc]($p/vars.inc)"
+        e="чисто"; [ -s "$work/r/$p/erc-summary.txt" ] && e="⚠ есть замечания"
       fi
-      if [ -f "$work/r/$n/code/report.md" ]; then
-        code="[отчёт]($n/code/report.md)"; grep -q "^## ❌" "$work/r/$n/code/report.md" && code="❌ $code"
+      if [ -n "$c" ]; then
+        code="[прогон $c: отчёт]($n/прогон-$c/code/report.md)"; grep -q "^## ❌" "$work/r/$n/прогон-$c/code/report.md" && code="❌ $code"
       fi
-      echo "| ${n%%/*} | ${n#*/} | $sch | $pe | $par | $asm | $e | $code |"
+      echo "| ${n%%/*} | ${n#*/} | [$(echo "$runs" | wc -l | tr -d ' ')]($n) | $sch | $pe | $par | $e | $code |"
     done
   } > "$work/r/README.md"
 
@@ -83,7 +104,7 @@ done
 raw="https://raw.githubusercontent.com/$repo/$c"
 for d in "$@"; do
   [ -f "$d/params.md" ] || continue
-  n="${d#build/}"
+  n="${d#build/}/прогон-$(cat "$d/.run")"
   {
     echo "## $n"
     grep -m1 "^Студент:" "$d/params.md" || true

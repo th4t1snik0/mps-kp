@@ -62,7 +62,8 @@ jobs:
         env:
           MPS_REQUIRE_S51: "1"
           SIM51_TRACE: ${{ github.workspace }}/s51-trace
-        run: go test -timeout 4m ./internal/asm51/ ./internal/sim51/ ./internal/codecheck/
+        # по одному s51 за раз: на 4 ядрах раннера 18 параллельных симуляторов душат друг друга (ответ s51 > 60 с)
+        run: go test -parallel 1 -timeout 15m ./internal/asm51/ ./internal/sim51/ ./internal/codecheck/
 
       - name: Журнал s51 при падении тестов
         if: failure()

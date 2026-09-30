@@ -55,7 +55,8 @@ scripts/render.sh build/<группа>/<вариант>  # только PDF/PNG/
 Нужно: Go 1.23+, KiCad 10 (`kicad-cli`), poppler (`pdftoppm`), шрифт GOST type A (`fonts/` — поставить в систему).
 macOS: `brew install --cask kicad && brew install go poppler`. Ubuntu: PPA `ppa:kicad/kicad-10.0-releases`.
 Без установки: GitHub → Actions → build → Run workflow (группа, M, Фамилия И.О., год набора) → сводка на странице запуска
-(картинка, ERC, параметры). Всё, что сделала джоба, — в ветке `results` по папкам `<группа>/<вариант>/` (оглавление в её README).
+(картинка, ERC, параметры). Всё, что сделала джоба, — в ветке `results` по папкам `<группа>/<вариант>/прогон-N/` (оглавление в её README):
+каждый запуск — новая папка `прогон-N`, прошлые не перетираются (то же на Яндекс-диске, номера совпадают).
 Ветку `results` пишет только CI (`scripts/publish.sh`), руками не править. Копия — на Яндекс-диск
 (`scripts/yadisk_upload.py`, `MPS-SHEMAS/<группа>/<вариант>/`; нужен секрет `YADISK_TOKEN`, см. README).
 
@@ -80,7 +81,7 @@ make code-try G=А-12 M=14 F=prog1.a51
 ```
 
 Push в `students/<ник>/code/` запускает workflow **code** (без KiCad): тесты чекера, `mpscode` по всем студентам,
-сверка нашего ассемблера с MCU 8051 IDE, результаты — в `results/<группа>/<M>/code/` и на Яндекс-диск.
+сверка нашего ассемблера с MCU 8051 IDE, результаты — в `results/<группа>/<M>/прогон-N/code/` и на Яндекс-диск.
 Эталоны `internal/codecheck/testdata/ref/` — только для проверки чекера, студентам не копировать.
 
 **Текущее задание — ТЗ-2026** (`docs/source/ТЗ-2026.pdf`, разбор отличий — `docs/research/tz-2026.md`), таблица по умолчанию —
