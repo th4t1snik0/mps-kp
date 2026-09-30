@@ -55,7 +55,8 @@ scripts/render.sh build/<папка>  # только PDF/PNG/ERC по готов
 macOS: `brew install --cask kicad && brew install go poppler`. Ubuntu: PPA `ppa:kicad/kicad-10.0-releases`.
 Без установки: GitHub → Actions → build → Run workflow (группа + M) → сводка на странице запуска
 (картинка, ERC, параметры). Всё, что сделала джоба, — в ветке `results` (`results/<папка>/…`, оглавление в её README).
-Ветку `results` пишет только CI (`scripts/publish.sh`), руками не править.
+Ветку `results` пишет только CI (`scripts/publish.sh`), руками не править. Копия — на Яндекс-диск
+(`scripts/yadisk_upload.py`, папка MPS-SHEMAS; нужен секрет `YADISK_TOKEN`, см. README).
 
 Что получается в `build/<папка>/`: `params.md` (все параметры варианта и ответы на п. 2.3 ТЗ), `params.json`,
 `vars.inc` (EQU/BIT для асма), `schematic.kicad_sch` (открывается в KiCad 10), `schematic.pdf/png`,

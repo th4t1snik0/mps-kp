@@ -76,6 +76,14 @@ jobs:
           dirs=(build/*/)
           scripts/publish.sh "${dirs[@]%/}"
 
+      - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true   # проблемы с диском не должны валить сборку
+        env:
+          YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: python3 scripts/yadisk_upload.py build/*/
+
       - uses: actions/upload-artifact@v4
         with:
           name: build

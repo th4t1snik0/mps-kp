@@ -32,6 +32,22 @@ make try G=А-12 M=14          # → build/try-А-12-14/
 **Насовсем** — положи свой `students/<ник>/variant.yaml` (образец — `students/example-a12-14/`, там же ФИО
 в рамку) и сделай PR: CI соберёт всех.
 
+### Яндекс-диск
+
+Джоба дублирует результаты в папку [MPS-SHEMAS](https://disk.yandex.ru/d/ai0wkudkDT9Tog):
+`MPS-SHEMAS/<вариант>/` (схема PNG/PDF/KiCad, `params.md`, `vars.inc`, ERC), недостающие папки создаёт сама.
+Нужен OAuth-токен владельца папки в секрете репо `YADISK_TOKEN` (без него шаг пропускается):
+
+1. https://oauth.yandex.ru/client/new → название любое → платформа «Веб-сервисы», Redirect URI
+   `https://oauth.yandex.ru/verification_code` → права **Яндекс.Диск REST API**: «Чтение всего Диска»
+   и «Запись в любом месте на Диске» → создать, скопировать **ClientID**.
+2. Открыть `https://oauth.yandex.ru/authorize?response_type=token&client_id=<ClientID>` под своим аккаунтом,
+   разрешить → скопировать токен.
+3. GitHub → Settings → Secrets and variables → Actions → **New repository secret**: имя `YADISK_TOKEN`, значение — токен.
+4. Другая папка — там же вкладка **Variables** → `YADISK_PUBLIC` = публичная ссылка на папку (папка должна быть опубликована).
+
+Токен живёт ~год и даёт запись во весь Диск — держи на нём только учебное. В чужих форках секрет недоступен.
+
 ## Что где лежит
 
 | Папка | Что там |
