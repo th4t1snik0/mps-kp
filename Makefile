@@ -14,8 +14,8 @@ student: bin/mpsgen
 	scripts/render.sh build/$(S)
 
 try: bin/mpsgen
-	./bin/mpsgen -table $(TABLE) -group $(G) -m $(M) -out build/try-$(M)
-	scripts/render.sh build/try-$(M)
+	./bin/mpsgen -table $(TABLE) -group $(G) -m $(M) -out build/try-$(G)-$(M)
+	scripts/render.sh build/try-$(G)-$(M)
 
 # пересобрать masters/lib/mps.kicad_sym из библиотек KiCad (нужно только при правке cmd/mpslib)
 KICAD_SYMBOLS ?= /Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols
