@@ -117,3 +117,18 @@ func TestErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestKeilCompat(t *testing.T) {
+	src := "$INCLUDE (REG52.INC)\nMODE EQU 2\nCSEG AT 0\nIF MODE = 1\n mov a,#1\nELSEIF MODE = 2\n mov a,#2\n IF 0\n  mov a,#9\n ENDIF\nELSE\n mov a,#3\nENDIF\n PUBLIC foo\nfoo: nop\nEND\n"
+	r := Assemble("t", src, nil)
+	if len(r.Errors) > 0 {
+		t.Fatal(r.Errors)
+	}
+	if r.Code[0] != 0x74 || r.Code[1] != 2 || r.Code[2] != 0 || len(r.Code) != 3 {
+		t.Fatalf("% X", r.Code)
+	}
+	r = Assemble("t", "RSEG CODE\nEND\n", nil)
+	if len(r.Errors) == 0 {
+		t.Fatal("RSEG должен давать понятную ошибку")
+	}
+}

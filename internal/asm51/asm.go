@@ -76,6 +76,12 @@ type Asm struct {
 	cur    int
 	ended  bool
 	errSet map[int]bool
+	cond   []condState // вложенные IF … ENDIF
+}
+
+// condState — ветка условной сборки: active — сейчас собираем, taken — какая-то ветка уже выбрана.
+type condState struct {
+	active, taken, parent bool
 }
 
 // Assemble собирает src (имя файла name), включения читает read.
@@ -83,7 +89,7 @@ func Assemble(name, src string, read Reader) *Result {
 	a := &Asm{syms: map[string]Symbol{}, short: map[int]string{}, errSet: map[int]bool{}}
 	a.load(name, src, read, false, 0)
 	for a.pass = 1; a.pass <= 2; a.pass++ {
-		a.seg, a.lc, a.ended = segCode, [5]int{}, false
+		a.seg, a.lc, a.ended, a.cond = segCode, [5]int{}, false, nil
 		a.code = map[int]byte{}
 		for i := range a.lines {
 			if a.ended {
@@ -106,6 +112,17 @@ func Assemble(name, src string, read Reader) *Result {
 	return &Result{Lines: a.lines, Symbols: user, Code: a.code, Errors: a.errs}
 }
 
+// regDefs — стандартные файлы определений SFR: у нас эти имена встроены, файл не нужен.
+var regDefs = map[string]bool{"REG51.INC": true, "REG52.INC": true, "8051.MCU": true, "8052.MCU": true, "89S53.MCU": true,
+	"AT89S53.INC": true, "REG_C51.INC": true, "AT89X52.INC": true}
+
+func pathBase(p string) string {
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
 func (a *Asm) load(name, src string, read Reader, inc bool, depth int) {
 	src = strings.TrimPrefix(src, "\xef\xbb\xbf")
 	for n, text := range strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n") {
@@ -120,6 +137,9 @@ func (a *Asm) load(name, src string, read Reader, inc bool, depth int) {
 			continue
 		}
 		f := strings.Trim(strings.TrimSpace(t[len("$INCLUDE"):]), "()\"' \t")
+		if regDefs[strings.ToUpper(pathBase(f))] {
+			continue // определения SFR 8051/8052/AT89S53 встроены (как REG51.INC / 89S53.MCU у Keil и ASEM)
+		}
 		if depth > 4 || read == nil {
 			a.errs = append(a.errs, Error{name, n + 1, "$INCLUDE не поддержан здесь"})
 			continue
@@ -234,6 +254,38 @@ func (a *Asm) line(i int) {
 	if t == "" || strings.HasPrefix(t, "$") {
 		return
 	}
+	// условная сборка (Keil A51): IF выражение / ELSEIF выражение / ELSE / ENDIF
+	w0, restIf := word(t)
+	switch strings.ToUpper(w0) {
+	case "IF":
+		parent := a.enabled()
+		v := a.value(restIf)
+		a.cond = append(a.cond, condState{active: parent && v != 0, taken: v != 0, parent: parent})
+		return
+	case "ELSEIF", "ELSE":
+		if len(a.cond) == 0 {
+			a.errf("%s без IF", strings.ToUpper(w0))
+			return
+		}
+		c := &a.cond[len(a.cond)-1]
+		v := 1
+		if strings.EqualFold(w0, "ELSEIF") {
+			v = a.value(restIf)
+		}
+		c.active = c.parent && !c.taken && v != 0
+		c.taken = c.taken || v != 0
+		return
+	case "ENDIF":
+		if len(a.cond) == 0 {
+			a.errf("ENDIF без IF")
+			return
+		}
+		a.cond = a.cond[:len(a.cond)-1]
+		return
+	}
+	if !a.enabled() {
+		return
+	}
 	// метка «имя:»
 	if j := labelEnd(t); j > 0 {
 		name := strings.TrimSpace(t[:j])
@@ -295,7 +347,10 @@ func (a *Asm) line(i int) {
 	case "END":
 		a.ended = true
 		return
-	case "USING", "NAME":
+	case "USING", "NAME", "PUBLIC", "EXTRN", "EXTERN":
+		return
+	case "RSEG", "SEGMENT", "MACRO", "REPT", "IRP":
+		a.errf("%s не поддержан: робот принимает один файл — пиши абсолютными сегментами CSEG AT / DSEG AT (рис. 7 ТЗ)", u1)
 		return
 	case "ORG":
 		a.lc[a.seg] = a.value(rest)
@@ -451,3 +506,5 @@ func (r *Result) Listing() string {
 	}
 	return b.String()
 }
+
+func (a *Asm) enabled() bool { return len(a.cond) == 0 || a.cond[len(a.cond)-1].active }
