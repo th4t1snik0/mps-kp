@@ -12,3 +12,8 @@ docs/prev/
 CLAUDE.local.md
 AGENTS.local.md
 .DS_Store
+
+# проверка программ: эталоны чекера в CI и vars.inc рядом с кодом студента (генерируются)
+build-ref/
+students/*/code/vars.inc
+__pycache__/

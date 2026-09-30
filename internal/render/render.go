@@ -133,6 +133,15 @@ func Asm(p *variant.Params) string {
 	w("BUF_END      EQU %s        ; первая ячейка ЗА буфером (точка заворота)", H(buf.Base+p.V))
 	w("BUF_SIZE     EQU %d", p.V)
 	w("")
+	w("; --- клавиатура %s и индикатор ---", p.Keyboard)
+	w("KB_COLS      EQU %d             ; столбцы Col1…Col%d — биты D0…D%d при записи в ADR_KB (0 — столбец опрашивается)", p.Cols, p.Cols, p.Cols-1)
+	w("KB_ROWS      EQU %d             ; строки Row1…Row%d — биты D0…D%d при чтении ADR_KB (0 — замкнута); старшие биты не определены — маскировать", p.Rows, p.Rows, p.Rows-1)
+	off, kind := "00h", "общий катод: 1 зажигает сегмент"
+	if p.Indicator == "anode" {
+		off, kind = "0FFh", "общий анод: 0 зажигает сегмент"
+	}
+	w("IND_OFF      EQU %s           ; индикатор погашен (%s; D0…D7 = a…g, dp)", off, kind)
+	w("")
 	w("; --- внутреннее ОЗУ ---")
 	w("HEAD_L       EQU %s          ; «голова», младший байт", H(p.Head))
 	w("HEAD_H       EQU %s          ; «голова», старший байт", H(p.Head+1))

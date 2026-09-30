@@ -91,7 +91,8 @@ def main(dirs):
     base = base_path()
     for d in dirs:
         d = d.rstrip("/")
-        if not os.path.isfile(os.path.join(d, "params.md")):
+        code = os.path.join(d, "code")
+        if not os.path.isfile(os.path.join(d, "params.md")) and not os.path.isdir(code):
             continue
         name = os.path.relpath(d, "build") if d.startswith("build/") else os.path.basename(d)
         cur = base
@@ -104,6 +105,13 @@ def main(dirs):
             if os.path.isfile(p):
                 upload(p, f"{base}/{name}/{f}")
                 n += 1
+        if os.path.isdir(code):  # проверка программ: файлы для робота, отчёт, листинги
+            mkdir(f"{base}/{name}/code")
+            for f in sorted(os.listdir(code)):
+                p = os.path.join(code, f)
+                if os.path.isfile(p):
+                    upload(p, f"{base}/{name}/code/{f}")
+                    n += 1
         print(f"яндекс-диск: {base}/{name} — {n} файлов")
 
 

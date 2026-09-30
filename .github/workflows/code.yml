@@ -1,0 +1,118 @@
+name: code
+
+# Проверка программ КМ-3 (students/<ник>/code/prog{1,2,3}.a51) — без KiCad, только Go + симулятор s51.
+#  - push: если менялись программы студентов, чекер, шаблоны или таблица;
+#  - Actions → code → Run workflow: можно указать ник (пусто — все студенты).
+# Что делает: тесты чекера на эталонах; сверка нашего ассемблера с MCU 8051 IDE; mpscode по каждому студенту;
+# результаты (файлы для робота «Фамилия ИО-код-n.txt», отчёт) — в ветку results (<группа>/<M>/code/), на Яндекс-диск и в артефакт.
+on:
+  push:
+    paths:
+      - "students/**"
+      - "cmd/mpscode/**"
+      - "internal/asm51/**"
+      - "internal/sim51/**"
+      - "internal/codecheck/**"
+      - "internal/variant/**"
+      - "internal/render/**"
+      - "data/**"
+      - "scripts/mide_crosscheck.sh"
+      - "scripts/publish.sh"
+      - ".github/workflows/code.yml"
+  workflow_dispatch:
+    inputs:
+      student:
+        description: "Ник студента (папка в students/); пусто — все"
+        required: false
+        default: ""
+
+concurrency:
+  group: code-${{ github.ref }}-${{ inputs.student }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  code:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Симулятор s51 (ucsim из SDCC через Homebrew — та же версия, что локально на macOS)
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew install sdcc
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          "$(brew --prefix)/bin/s51" -v
+
+      - name: MCU 8051 IDE (второй ассемблер для сверки)
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mcu8051ide
+
+      - name: Тесты ассемблера, симулятора и чекера (эталоны должны проходить, поломки — падать)
+        env:
+          MPS_REQUIRE_S51: "1"
+        run: go test ./internal/asm51/ ./internal/sim51/ ./internal/codecheck/
+
+      - name: Сборка mpscode
+        run: go build -o bin/mpscode ./cmd/mpscode
+
+      - name: Эталоны чекера → build-ref (для сверки с MIDE)
+        run: |
+          r=internal/codecheck/testdata/ref
+          bin/mpscode -outroot build-ref -group А-12 -m 14 -nosim $r/prog1.a51 $r/prog2r.a51 $r/prog3y2.a51 >/dev/null
+          bin/mpscode -outroot build-ref -group А-12 -m 15 -nosim $r/prog2w.a51 $r/prog3ind.a51 >/dev/null
+          bin/mpscode -outroot build-ref -group А-17 -m 16 -nosim $r/prog3y1.a51 >/dev/null
+
+      - name: Программы студентов
+        id: students
+        env:
+          ONLY: ${{ inputs.student }}
+        run: |
+          status=0
+          for f in students/*/variant.yaml; do
+            s="$(basename "$(dirname "$f")")"
+            [ -n "$ONLY" ] && [ "$s" != "$ONLY" ] && continue
+            ls students/"$s"/code/prog[123].a51 >/dev/null 2>&1 || continue
+            echo "::group::$s"
+            bin/mpscode -student "$f" || status=1
+            echo "::endgroup::"
+          done
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Сверка asm51 с MCU 8051 IDE
+        run: scripts/mide_crosscheck.sh build build-ref
+
+      - name: Результаты → ветка results
+        if: github.ref == 'refs/heads/main'
+        env:
+          SUMMARY: "0"   # сводку уже написал mpscode
+        run: find build/ -mindepth 3 -maxdepth 3 -type d -name code -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
+
+      - name: Результаты → Яндекс-диск (если задан секрет YADISK_TOKEN)
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: find build/ -mindepth 3 -maxdepth 3 -type d -name code -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code
+          path: |
+            build/**/code/
+            build-ref/
+          retention-days: 7
+
+      - name: Итог по студентам
+        if: steps.students.outputs.status != '0'
+        run: |
+          echo "::error::в программах студентов есть ❌ — отчёт на странице запуска (Summary) и в build/<группа>/<M>/code/report.md"
+          exit 1

@@ -2,14 +2,15 @@
 # Выкладывает результаты сборки в ветку results и пишет сводку запуска (GitHub Actions).
 # Использование: scripts/publish.sh build/<группа>/<вариант> [...]
 #
-# Ветка results — только сгенерированные файлы: <группа>/<вариант>/{schematic.png,pdf,kicad_sch,…, params.md, vars.inc}
-# + README.md с оглавлением. Каждый раз перезаписывается одним коммитом (история не нужна, репо не пухнет).
-# Папки, которых нет в этом запуске, сохраняются из прошлого содержимого ветки.
+# Ветка results — только сгенерированные файлы: <группа>/<вариант>/{schematic.png,pdf,kicad_sch,…, params.md, vars.inc,
+# code/ — проверка программ} + README.md с оглавлением. Каждый раз перезаписывается одним коммитом (история не нужна).
+# Папки и файлы, которых нет в этом запуске, сохраняются из прошлого содержимого ветки: workflow build обновляет
+# схему и не трогает code/, workflow code — наоборот. SUMMARY=0 — не писать сводку запуска (её пишет mpscode).
 set -euo pipefail
 
 # только папки, где генератор отработал
 dirs=()
-for d in "$@"; do [ -f "$d/params.md" ] && dirs+=("${d%/}") || echo "пропуск $d: нет params.md" >&2; done
+for d in "$@"; do { [ -f "$d/params.md" ] || [ -d "$d/code" ]; } && dirs+=("${d%/}") || echo "пропуск $d: нет params.md и code/" >&2; done
 [ ${#dirs[@]} -gt 0 ] || { echo "нечего публиковать" >&2; exit 0; }
 set -- "${dirs[@]}"
 
@@ -35,8 +36,11 @@ for attempt in 1 2 3; do
   fi
   for d in "$@"; do
     name="${d#build/}"
-    rm -rf "$work/r/$name" && mkdir -p "$work/r/$name"
-    for f in "${keep[@]}"; do [ -f "$d/$f" ] && cp "$d/$f" "$work/r/$name/"; done
+    mkdir -p "$work/r/$name"
+    if [ -f "$d/params.md" ]; then
+      for f in "${keep[@]}"; do rm -f "$work/r/$name/$f"; [ -f "$d/$f" ] && cp "$d/$f" "$work/r/$name/"; done
+    fi
+    if [ -d "$d/code" ]; then rm -rf "$work/r/$name/code" && cp -r "$d/code" "$work/r/$name/code"; fi
   done
   # оглавление
   {
@@ -44,11 +48,21 @@ for attempt in 1 2 3; do
     echo
     echo "Ветка обновляется автоматически (Actions → build). Руками не править. Исходники — ветка \`main\`."
     echo
-    echo "| Группа | Вариант | Схема | Перечень | Параметры | Асм | ERC |"
-    echo "| --- | --- | --- | --- | --- | --- | --- |"
-    (cd "$work/r" && find . -name params.md | sed 's|^\./||; s|/params.md$||' | sort -t/ -k1,1 -k2,2n) | while read -r n; do
-      e="чисто"; [ -s "$work/r/$n/erc-summary.txt" ] && e="⚠ есть замечания"
-      echo "| ${n%%/*} | ${n#*/} | [PNG]($n/schematic.png) · [PDF]($n/schematic.pdf) · [KiCad]($n/schematic.kicad_sch) | [ПЭ3]($n/perechen.pdf) · [КМ-1]($n/perechen-km1.pdf) | [params.md]($n/params.md) | [vars.inc]($n/vars.inc) | $e |"
+    echo "| Группа | Вариант | Схема | Перечень | Параметры | Асм | ERC | Код (КМ-3) |"
+    echo "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    (cd "$work/r" && { find . -mindepth 3 -maxdepth 3 -name params.md; find . -mindepth 4 -maxdepth 4 -path '*/code/report.md'; } |
+      sed 's|^\./||; s|/params.md$||; s|/code/report.md$||' | sort -u | sort -t/ -k1,1 -k2,2n) | while read -r n; do
+      sch="—" pe="—" par="—" asm="—" e="—" code="—"
+      if [ -f "$work/r/$n/params.md" ]; then
+        sch="[PNG]($n/schematic.png) · [PDF]($n/schematic.pdf) · [KiCad]($n/schematic.kicad_sch)"
+        pe="[ПЭ3]($n/perechen.pdf) · [КМ-1]($n/perechen-km1.pdf)"
+        par="[params.md]($n/params.md)" asm="[vars.inc]($n/vars.inc)"
+        e="чисто"; [ -s "$work/r/$n/erc-summary.txt" ] && e="⚠ есть замечания"
+      fi
+      if [ -f "$work/r/$n/code/report.md" ]; then
+        code="[отчёт]($n/code/report.md)"; grep -q "^## ❌" "$work/r/$n/code/report.md" && code="❌ $code"
+      fi
+      echo "| ${n%%/*} | ${n#*/} | $sch | $pe | $par | $asm | $e | $code |"
     done
   } > "$work/r/README.md"
 
@@ -64,9 +78,11 @@ for attempt in 1 2 3; do
   sleep 5
 done
 
+[ "${SUMMARY:-1}" = "0" ] && exit 0
 # сводка на странице запуска; картинка — по коммиту, а не по ветке (raw-CDN кэширует ветку минутами)
 raw="https://raw.githubusercontent.com/$repo/$c"
 for d in "$@"; do
+  [ -f "$d/params.md" ] || continue
   n="${d#build/}"
   {
     echo "## $n"

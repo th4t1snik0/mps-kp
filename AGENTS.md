@@ -27,6 +27,7 @@
 | Что | Куда | Правило |
 | --- | --- | --- |
 | свой вариант | `students/<ник>/variant.yaml` | образец — `students/example-a12-14/`; ник латиницей |
+| свои программы КМ-3 | `students/<ник>/code/prog{1,2,3}.a51` | заготовки — `make code-init S=<ник>`; гайд — [`docs/code-guide.md`](docs/code-guide.md) |
 | итоги своей сессии (что сделали, что решили, что дальше, вопросы) | `sessions/ГГГГ-ММ-ДД-<ник>.md` | только свой файл; чужие не трогать; дописывать в конце заметной сессии |
 | замечания руководителя к КМ | `notes/remarks.md` | только дописывать: дата — ник — что вернули — как исправили |
 | вопросы с защиты / теста КМ-4 | `notes/defense.md` | только дописывать: дата — ник — вопрос — ответ — реакция |
@@ -66,6 +67,22 @@ macOS: `brew install --cask kicad && brew install go poppler`. Ubuntu: PPA `ppa:
 `vars.inc` (EQU/BIT для асма), `schematic.kicad_sch` (открывается в KiCad 10), `schematic.pdf/png`,
 `erc-summary.txt` (**должен быть пустым**), `perechen.pdf` (ПЭ3 полный, для ПЗ1), `perechen-km1.pdf` (микросхемы и разъёмы, для КМ-1), `perechen.md`.
 
+## Программы (КМ-3)
+
+Гайд — [`docs/code-guide.md`](docs/code-guide.md) (правила робота, что видит программа на нашей схеме, соглашения по буферу,
+что проверяется). Коротко:
+
+```sh
+brew install sdcc                # симулятор s51 (ucsim) — нужен для сценариев; без него только сборка и правила
+make code-init S=<ник>           # заготовки по рис. 7 ТЗ под твой вариант → students/<ник>/code/
+make code S=<ник>                # проверка → build/<группа>/<M>/code/: report.md, «Фамилия ИО-код-n.txt» для робота
+make code-try G=А-12 M=14 F=prog1.a51
+```
+
+Push в `students/<ник>/code/` запускает workflow **code** (без KiCad): тесты чекера, `mpscode` по всем студентам,
+сверка нашего ассемблера с MCU 8051 IDE, результаты — в `results/<группа>/<M>/code/` и на Яндекс-диск.
+Эталоны `internal/codecheck/testdata/ref/` — только для проверки чекера, студентам не копировать.
+
 **Текущее задание — ТЗ-2026** (`docs/source/ТЗ-2026.pdf`, разбор отличий — `docs/research/tz-2026.md`), таблица по умолчанию —
 `data/table-2026.yaml`. Прошлый год: `TABLE=data/table-2025.yaml`. Следующее ТЗ — `data/table-<год>.yaml`
 + сверить `docs/research/` с новым текстом.
@@ -83,6 +100,10 @@ macOS: `brew install --cask kicad && brew install go poppler`. Ubuntu: PPA `ppa:
   - роли элементов (`b.role("mcu", …)`) — по ним пишется «Примечание» и проверяются цепи.
 - `cmd/mpslib` — собирает `masters/lib/mps.kicad_sym` из библиотек KiCad (+ IDT7005, FYS-5612, ГОСТ-земля).
 - `internal/render` — `params.md`, `vars.inc`. `masters/gost_ramka.kicad_wks` — рамка ГОСТ.
+- `internal/asm51` — ассемблер A51 (двухпроходный, generic JMP/CALL как в ASEM-51; байты = MCU 8051 IDE),
+  `internal/sim51` — управление ucsim `s51` по TCP-консоли, `internal/codecheck` — правила робота, модели устройств схемы,
+  сценарии программ, заготовки (`templates/`), эталоны (`testdata/ref/`); `cmd/mpscode` — CLI. Любая правка сценариев —
+  с тестом в `check_test.go`: эталоны проходят, «поломки» падают.
 
 **Проверка правок схемы:** `make test` → `make try` на 3–4 вариантах (чётный/нечётный M, INT0/INT1) →
 `erc-summary.txt` пустой → **посмотреть PNG глазами** (наложения надписей и провода сквозь символы тесты не ловят).
