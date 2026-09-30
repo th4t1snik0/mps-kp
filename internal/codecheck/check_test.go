@@ -85,6 +85,16 @@ func TestBufferPolicyV1(t *testing.T) {
 	}
 }
 
+// Опрос клавиатуры, вызванный из основной программы (как у Осиповой 2025), — проверяется и предупреждается, а не валится.
+func TestProg1FromMain(t *testing.T) {
+	p := params(t, "А-12", 14)
+	b, _ := os.ReadFile("testdata/ref/prog1_main.a51")
+	r := run(t, p, 1, "; Иванов ПС, А-12-23, 14, v1"+string(b)[strings.IndexByte(string(b), '\n'):])
+	if r.Worst() == Fail || !strings.Contains(r.Markdown(), "обработчика IRQ") {
+		t.Error(r.Markdown())
+	}
+}
+
 // Испорченные эталоны должны падать — иначе чекер ничего не ловит.
 func TestBrokenFail(t *testing.T) {
 	needSim(t)

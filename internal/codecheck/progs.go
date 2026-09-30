@@ -69,13 +69,20 @@ func prog1(h *harness) {
 		return
 	}
 	h.r.pass("Инициализация", "дошли до %%stop%%")
+	// %proc% в основной программе (как у принятой Осиповой 2025), а не в векторе INT0: по ТЗ процедура — обработчик IRQ;
+	// проверяем прямым вызовом с нажатой клавишей и предупреждаем
+	direct := h.procAt >= 0x2B
+	if direct {
+		h.r.warn("Вызов", "call с %%proc%% стоит в основной программе, а по ТЗ (табл. 1) программа 1 — процедура обработчика IRQ клавиатуры: "+
+			"вызывай её из вектора INT0 (03h). Сценарии ниже — прямым вызовом при нажатой клавише")
+	}
 	ie := h.s.SFR(0xA8)
-	if ie&0x81 != 0x81 {
+	if !direct && ie&0x81 != 0x81 {
 		h.r.fail("INT0", "после инициализации прерывание INT0 не разрешено (IE = %02Xh, нужны EA и EX0)", ie)
 		return
 	}
 	used := byte(1<<p.Cols) - 1
-	if k.cols&used != 0 {
+	if !direct && k.cols&used != 0 {
 		h.r.fail("Столбцы", "после инициализации столбцы = %04bb — должны быть все 0, иначе нажатие не опустит строку и INT0 не сработает", k.cols&used)
 		return
 	}
@@ -103,8 +110,14 @@ func prog1(h *harness) {
 	holdCalls := 0
 	worst := 0.0
 	for _, c := range cases {
+		if direct && c.lo {
+			continue // помеха на INT0 без нажатия — только для обработчика прерывания
+		}
 		k.pressed, k.forceLo = c.keys, c.lo
 		k.update()
+		if direct {
+			h.toProc()
+		}
 		t0 := h.s.Micros()
 		if h.runTo(50*ms, h.procRet) < 0 {
 			bad = append(bad, c.name+": процедура не вызвана за 50 мс (call %proc% должен быть в обработчике INT0)")
@@ -117,7 +130,7 @@ func prog1(h *harness) {
 		}
 		worst = math.Max(worst, h.s.Micros()-t0)
 		// удержание: одно нажатие — один вызов (по спаду и со сбросом IE0), а не очередь вызовов, пока держат
-		if c.name == "«1»" && len(c.keys) == 1 {
+		if c.name == "«1»" && len(c.keys) == 1 && !direct {
 			extra := 0
 			h.runUntil(30*ms, func(pc int) bool {
 				if pc == h.procRet {
