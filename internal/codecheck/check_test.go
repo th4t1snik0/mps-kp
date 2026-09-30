@@ -72,6 +72,19 @@ func TestReferencePass(t *testing.T) {
 	}
 }
 
+// Буфер по методичке (V−1 отсчётов) тоже принимается.
+func TestBufferPolicyV1(t *testing.T) {
+	p := params(t, "А-12", 15)
+	b, err := os.ReadFile("testdata/ref/prog2w_v1.a51")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := run(t, p, 2, "; Иванов ПС, А-12-23, 15, v1"+string(b)[strings.IndexByte(string(b), '\n'):])
+	if r.Worst() == Fail || !strings.Contains(r.Markdown(), "V − 1") {
+		t.Error(r.Markdown())
+	}
+}
+
 // Испорченные эталоны должны падать — иначе чекер ничего не ловит.
 func TestBrokenFail(t *testing.T) {
 	needSim(t)
@@ -92,6 +105,9 @@ func TestBrokenFail(t *testing.T) {
 		{"строб Y2 до записи", "А-12", 14, 3, "y2_wr:  mov DPTR, #ADR_Y2\n        movx @DPTR, A\n        clr TR1", "y2_wr:  clr PIN_Y2\n        mov DPTR, #ADR_Y2\n        movx @DPTR, A\n        clr TR1", "Y2 и строб"},
 		{"Y1 вдвое длиннее", "А-17", 16, 3, "mov Cnt, #LOW(Y1_TICKS)\n        mov Cnt+1, #HIGH(Y1_TICKS)", "mov Cnt, #LOW(Y1_TICKS*2)\n        mov Cnt+1, #HIGH(Y1_TICKS*2)", "Строб Y1"},
 		{"индикатор без инверсии для ОА", "А-12", 15, 3, "        xrl A, #IND_OFF         ; у общего анода", "        nop                     ; у общего анода", "Символы"},
+		{"RET вместо RETI", "А-12", 14, 3, "        setb PIN_Y2\n        reti", "        setb PIN_Y2\n        ret", "RETI"},
+		{"переменная на адресе головы", "А-12", 14, 3, "X1:     DS 1", "X1      DATA 47h\nXX:     DS 1", "Память"},
+		{"INT0 по уровню", "А-12", 14, 1, "        setb IT0                ; INT0 по спаду", "        clr IT0", "Удержание клавиши"},
 		{"%proc% с пробелом", "А-12", 14, 1, "; %proc%", "; % proc%", "Пометки роботу"},
 		{"нет заглушки", "А-12", 14, 1, "org 23h ; \"заглушка\" для UART\n        nop\n        reti\n", "", "Заглушки IRQ"},
 	}
@@ -105,7 +121,7 @@ func TestBrokenFail(t *testing.T) {
 			}
 			r := run(t, p, c.n, strings.Replace(src, c.old, c.nu, 1))
 			for _, it := range r.Items {
-				if it.Name == c.item && it.Level == Fail {
+				if it.Name == c.item && (it.Level == Fail || it.Level == Warn && c.item == "Удержание клавиши") {
 					t.Log(it.Msg)
 					return
 				}

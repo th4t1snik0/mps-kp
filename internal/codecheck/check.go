@@ -78,6 +78,7 @@ func Check(in Input) *Report {
 	}
 
 	m := lintAsm(r, res)
+	lintRules(r, res, in.Params)
 	if m == nil || in.NoSim {
 		return r
 	}

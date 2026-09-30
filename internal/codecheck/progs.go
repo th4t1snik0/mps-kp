@@ -100,6 +100,7 @@ func prog1(h *harness) {
 	)
 	var bad []string
 	restored := true
+	holdCalls := 0
 	worst := 0.0
 	for _, c := range cases {
 		k.pressed, k.forceLo = c.keys, c.lo
@@ -115,6 +116,19 @@ func prog1(h *harness) {
 			continue
 		}
 		worst = math.Max(worst, h.s.Micros()-t0)
+		// удержание: одно нажатие — один вызов (по спаду и со сбросом IE0), а не очередь вызовов, пока держат
+		if c.name == "«1»" && len(c.keys) == 1 {
+			extra := 0
+			h.runUntil(30*ms, func(pc int) bool {
+				if pc == h.procRet {
+					extra++
+				}
+				return false
+			})
+			if extra > 0 {
+				holdCalls = extra
+			}
+		}
 		if a := int(h.s.A()); a != c.want {
 			bad = append(bad, fmt.Sprintf("%s: A = %s, ждали %s", c.name, hx(a), hx(c.want)))
 		}
@@ -132,6 +146,12 @@ func prog1(h *harness) {
 		h.r.fail("Коды клавиш", "%s", joinCap(bad))
 	} else {
 		h.r.pass("Коды клавиш", "все %d клавиш, две клавиши и помеха — верно; от нажатия до возврата ≤ %.0f мкс", p.Rows*p.Cols, worst)
+	}
+	if holdCalls > 0 {
+		h.r.warn("Удержание клавиши", "пока клавишу держат, обработчик вызвался ещё %d раз за 30 мс — нужен запуск INT0 по спаду (IT0 = 1) и сброс IE0 в конце опроса", holdCalls)
+	}
+	if worst > 2000 {
+		h.r.warn("Время опроса", "от нажатия до результата %.0f мкс — дольше 2 мс; программный антидребезг методичка не предполагает (дребезг гасит RC-фильтр)", worst)
 	}
 	if !restored {
 		h.r.fail("Столбцы", "после опроса столбцы не возвращены в 0 — следующее нажатие не вызовет INT0")
@@ -193,39 +213,19 @@ func prog2(h *harness) {
 		h.r.pass("Инициализация", "буфер пуст: %s", got)
 	}
 	type sc struct {
-		name   string
-		in     bufState
-		data   map[int]byte // заранее в буфере
-		a      byte         // A на входе (запись)
-		out    bufState
-		ovfAny bool // F_OVF на выходе не проверять (ровно заполнили — ТЗ допускает оба толкования)
-		wantA  int  // чтение: ожидаемый A (-1 — не проверять)
-		cell   int  // запись: куда должен лечь отсчёт
-	}
-	var cases []sc
-	if read {
-		cases = []sc{
-			{name: "пустой буфер", in: bufState{S + 7, S + 7, true, false}, out: bufState{S + 7, S + 7, true, false}, wantA: -1},
-			{name: "один отсчёт", in: bufState{S + 8, S + 7, false, false}, data: map[int]byte{S + 7: 0xA5}, out: bufState{S + 8, S + 8, true, false}, wantA: 0xA5},
-			{name: "три отсчёта", in: bufState{S + 10, S + 7, false, false}, data: map[int]byte{S + 7: 0x11, S + 8: 0x22, S + 9: 0x33}, out: bufState{S + 10, S + 8, false, false}, wantA: 0x11},
-			{name: "заворот хвоста", in: bufState{S + 2, E - 1, false, false}, data: map[int]byte{E - 1: 0x3C, S: 0x3D}, out: bufState{S + 2, S, false, false}, wantA: 0x3C},
-			{name: "последний отсчёт на границе", in: bufState{S, E - 1, false, false}, data: map[int]byte{E - 1: 0x42}, out: bufState{S, S, true, false}, wantA: 0x42},
-			{name: "полный буфер", in: bufState{S + 20, S + 20, false, true}, data: map[int]byte{S + 20: 0x7E}, out: bufState{S + 20, S + 21, false, false}, wantA: 0x7E},
-		}
-	} else {
-		cases = []sc{
-			{name: "в пустой буфер", in: bufState{S + 7, S + 7, true, false}, a: 0xA5, out: bufState{S + 8, S + 7, false, false}, cell: S + 7},
-			{name: "в непустой", in: bufState{S + 9, S + 7, false, false}, a: 0x5A, out: bufState{S + 10, S + 7, false, false}, cell: S + 9},
-			{name: "заворот головы", in: bufState{E - 1, S + 3, false, false}, a: 0x3C, out: bufState{S, S + 3, false, false}, cell: E - 1},
-			{name: "последняя свободная ячейка", in: bufState{S + 6, S + 7, false, false}, a: 0x66, out: bufState{S + 7, S + 7, false, false}, ovfAny: true, cell: S + 6},
-			{name: "переполнение", in: bufState{S + 7, S + 7, false, true}, a: 0x77, out: bufState{S + 8, S + 8, false, true}, cell: S + 7},
-			{name: "переполнение на границе", in: bufState{E - 1, E - 1, false, false}, a: 0x88, out: bufState{S, S, false, true}, cell: E - 1},
-		}
+		name  string
+		in    bufState
+		data  map[int]byte // заранее в буфере
+		a     byte         // A на входе (запись)
+		outs  []bufState   // допустимые итоги (первый — основной)
+		wantA int          // чтение: ожидаемый A (-1 — не проверять)
+		cell  int          // запись: куда должен лечь отсчёт
 	}
 	var bad []string
-	for _, c := range cases {
+	// run — один вызов процедуры; возвращает итог (или nil, если не вернулась) и номер совпавшего допустимого итога (-1 — нет).
+	run := func(c sc) (*bufState, int) {
 		guard := map[int]byte{}
-		for _, a := range []int{S - 1, S, S + 1, E - 1, E, S + 6, S + 7, S + 8, S + 9, S + 10, S + 20, S + 21} {
+		for _, a := range []int{S - 1, S, S + 1, E - 1, E, S + 6, S + 7, S + 8, S + 9, S + 10, S + 19, S + 20, S + 21} {
 			guard[a] = byte(h.rng.Intn(256))
 			h.s.SetXRAM(a, guard[a])
 		}
@@ -237,15 +237,22 @@ func prog2(h *harness) {
 		h.s.SetA(c.a)
 		if !h.call(20 * ms) {
 			bad = append(bad, c.name+": процедура не вернулась за 20 мс")
-			break
+			return nil, -1
 		}
 		got := h.getBuf()
-		want := c.out
-		if c.ovfAny {
-			want.ovf = got.ovf
+		match := -1
+		for i, o := range c.outs {
+			if got == o {
+				match = i
+				break
+			}
 		}
-		if got != want {
-			bad = append(bad, fmt.Sprintf("%s: %s, ждали %s", c.name, got, want))
+		if match < 0 {
+			var want []string
+			for _, o := range c.outs {
+				want = append(want, o.String())
+			}
+			bad = append(bad, fmt.Sprintf("%s: %s, ждали %s", c.name, got, strings.Join(want, " или ")))
 		}
 		if read && c.wantA >= 0 {
 			if a := int(h.s.A()); a != c.wantA {
@@ -264,16 +271,75 @@ func prog2(h *harness) {
 				bad = append(bad, fmt.Sprintf("%s: %s в %04Xh (%s вместо %s)", c.name, what, a, hx(int(got)), hx(int(v))))
 			}
 		}
+		return &got, match
 	}
 	name := map[bool]string{true: "Чтение", false: "Запись"}[read]
+	n := 0
+	policy := ""
+	if read {
+		for _, c := range []sc{
+			{name: "пустой буфер", in: bufState{S + 7, S + 7, true, false}, outs: []bufState{{S + 7, S + 7, true, false}}, wantA: -1},
+			{name: "один отсчёт", in: bufState{S + 8, S + 7, false, false}, data: map[int]byte{S + 7: 0xA5}, outs: []bufState{{S + 8, S + 8, true, false}}, wantA: 0xA5},
+			{name: "три отсчёта", in: bufState{S + 10, S + 7, false, false}, data: map[int]byte{S + 7: 0x11, S + 8: 0x22, S + 9: 0x33}, outs: []bufState{{S + 10, S + 8, false, false}}, wantA: 0x11},
+			{name: "заворот хвоста", in: bufState{S + 2, E - 1, false, false}, data: map[int]byte{E - 1: 0x3C, S: 0x3D}, outs: []bufState{{S + 2, S, false, false}}, wantA: 0x3C},
+			{name: "последний отсчёт на границе", in: bufState{S, E - 1, false, false}, data: map[int]byte{E - 1: 0x42}, outs: []bufState{{S, S, true, false}}, wantA: 0x42},
+			// заполненный буфер, годится для обеих политик (V и V−1): чтение сбрасывает флаг переполнения
+			{name: "после переполнения", in: bufState{S + 19, S + 20, false, true}, data: map[int]byte{S + 20: 0x7E}, outs: []bufState{{S + 19, S + 21, false, false}}, wantA: 0x7E},
+		} {
+			run(c)
+			n++
+		}
+	} else {
+		for _, c := range []sc{
+			{name: "в пустой буфер", in: bufState{S + 7, S + 7, true, false}, a: 0xA5, outs: []bufState{{S + 8, S + 7, false, false}}, cell: S + 7},
+			{name: "в непустой", in: bufState{S + 9, S + 7, false, false}, a: 0x5A, outs: []bufState{{S + 10, S + 7, false, false}}, cell: S + 9},
+			{name: "заворот головы", in: bufState{E - 1, S + 3, false, false}, a: 0x3C, outs: []bufState{{S, S + 3, false, false}}, cell: E - 1},
+		} {
+			run(c)
+			n++
+		}
+		// голова догоняет хвост: по ТЗ «полон» можно понимать как V отсчётов (голова = хвост при F_EMPTY = 0) или как в методичке
+		// (с. 14) — V−1: запись, после которой голова = хвост, уже переполнение (хвост сдвигается, F_OVF = 1). Принимаются обе.
+		got, _ := run(sc{name: "голова догоняет хвост", in: bufState{S + 6, S + 7, false, false}, a: 0x66, cell: S + 6,
+			outs: []bufState{{S + 7, S + 7, false, false}, {S + 7, S + 7, false, true}, {S + 7, S + 8, false, true}}})
+		n++
+		switch {
+		case got != nil && got.tail == S+8:
+			policy = "V − 1 (как в методичке: голова = хвост после записи — переполнение)"
+			run(sc{name: "переполнение на границе", in: bufState{E - 1, S, false, false}, a: 0x88, cell: E - 1, outs: []bufState{{S, S + 1, false, true}}})
+			n++
+		case got != nil:
+			policy = "V (голова = хвост при F_EMPTY = 0 — буфер полон)"
+			for _, c := range []sc{
+				{name: "переполнение", in: bufState{S + 7, S + 7, false, true}, a: 0x77, outs: []bufState{{S + 8, S + 8, false, true}}, cell: S + 7},
+				{name: "переполнение на границе", in: bufState{E - 1, E - 1, false, false}, a: 0x88, outs: []bufState{{S, S, false, true}}, cell: E - 1},
+			} {
+				run(c)
+				n++
+			}
+		}
+	}
 	if len(bad) > 0 {
 		h.r.fail(name, "%s", joinCap(bad))
 	} else {
-		h.r.pass(name, "%d сценариев (пусто, заворот, полный буфер) — верно", len(cases))
+		msg := fmt.Sprintf("%d сценариев (пусто, заворот, переполнение) — верно", n)
+		if policy != "" {
+			msg += "; политика буфера: " + policy
+		}
+		h.r.pass(name, "%s", msg)
 	}
 }
 
 // ---------------------------------------------------------------- программа 3
+
+// timerCheck — таймеры по ТЗ-2026: T1 и T3 — таймер 0, T2 — таймер 1 (проверка разрешения прерывания после инициализации).
+func (h *harness) timerCheck(want int, what string) {
+	ie := h.s.SFR(0xA8)
+	et := []byte{0x02, 0x08}
+	if ie&et[want] == 0 {
+		h.r.warn("Таймер", "%s по ТЗ отсчитывает таймер %d, а его прерывание после инициализации не разрешено (IE = %02Xh)", what, want, ie)
+	}
+}
 
 func tolMs(us float64) float64 { return math.Max(1*ms, us*0.01) }
 
@@ -314,6 +380,7 @@ func prog3Y1(h *harness) {
 		h.r.fail("Инициализация", "за 100 мс не дошли до строки с %%proc%%")
 		return
 	}
+	h.timerCheck(0, "T1")
 	T := float64(p.T1ms) * ms
 	for i := 1; i <= 2; i++ {
 		h.p1 = h.s.Latch(1)
@@ -381,6 +448,7 @@ func prog3Ind(h *harness) {
 		h.r.fail("Инициализация", "за 100 мс не дошли до строки с %%proc%%")
 		return
 	}
+	h.timerCheck(0, "T3")
 	shown := func() (byte, bool) {
 		if len(log) == 0 {
 			return 0, false
@@ -504,6 +572,7 @@ func prog3Y2(h *harness) {
 		h.r.fail("Инициализация", "за 100 мс не дошли до строки с %%proc%%")
 		return
 	}
+	h.timerCheck(1, "T2")
 	T := float64(p.T2us)
 	tol := math.Max(20, T*0.01)
 	var bad []string
