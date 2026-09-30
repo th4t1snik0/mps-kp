@@ -54,12 +54,12 @@ func TestNetlist(t *testing.T) {
 					t.Fatalf("%v: %s", err, out)
 				}
 				// ERC: любое нарушение — ошибка (правила, которые для учебной схемы не ошибка, выключены в Project)
-			rpt := filepath.Join(dir, "erc.rpt")
-			if out, err := exec.Command(cli, "sch", "erc", "--exit-code-violations", "-o", rpt, sch).CombinedOutput(); err != nil {
-				b, _ := os.ReadFile(rpt)
-				t.Errorf("ERC: %v\n%s\n%s", err, out, b)
-			}
-			nets := readNets(t, net)
+				rpt := filepath.Join(dir, "erc.rpt")
+				if out, err := exec.Command(cli, "sch", "erc", "--exit-code-violations", "-o", rpt, sch).CombinedOutput(); err != nil {
+					b, _ := os.ReadFile(rpt)
+					t.Errorf("ERC: %v\n%s\n%s", err, out, b)
+				}
+				nets := readNets(t, net)
 				for name, want := range expected(v, sh.Roles) {
 					got := nets.byPin[want[0]]
 					if strings.Join(nets.members[got], " ") != strings.Join(sorted(want), " ") {

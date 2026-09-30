@@ -139,6 +139,22 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 		fmt.Println("  ⚠ в рамке не нашлась строка «Группа …, Э3» — вариант в рамку не вписан")
 	}
 	writes["ramka.kicad_wks"] = wks
+	// перечень элементов (ГОСТ 2.701): полный — для ПЗ1, черновик КМ-1 — только микросхемы и разъёмы (ТЗ, разд. 3)
+	base, _ := os.ReadFile(strings.TrimSuffix(strings.TrimSuffix(wksPath, "_full.kicad_wks"), ".kicad_wks") + ".kicad_wks")
+	peLine := strings.Replace(render.VariantLine(st.GroupFull, p.M), "Э3", "ПЭ3", 1)
+	full, km1 := sh.BOM(true), sh.BOM(false)
+	for _, set := range []struct {
+		name  string
+		lines []schgen.BOMLine
+	}{{"perechen", full}, {"perechen-km1", km1}} {
+		pages := schgen.PE3(set.lines, fmt.Sprintf("%s-%d-%s", p.Group, p.M, set.name), sh.Title)
+		for i, pg := range pages {
+			writes[fmt.Sprintf("%s-%d.kicad_sch", set.name, i+1)] = pg.String()
+			writes[fmt.Sprintf("%s-%d.kicad_wks", set.name, i+1)] = schgen.PE3Wks(string(base), peLine, i+1, len(pages))
+		}
+	}
+	writes["perechen.md"] = schgen.BOMMarkdown(full, "Перечень элементов — "+peLine) + "\n" +
+		schgen.BOMMarkdown(km1, "Черновик для КМ-1 (только микросхемы и разъёмы)")
 	for name, body := range writes {
 		if err := os.WriteFile(filepath.Join(out, name), []byte(body), 0o644); err != nil {
 			return err

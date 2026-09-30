@@ -750,12 +750,12 @@ func (b *builder) power() {
 	b.vcc(Pt{x, yv - 2.54})
 	b.Wire(Pt{x, yv - 2.54}, Pt{x, yv})
 	ce := b.Sym("C_Polarized", b.next("C"), "470 мк", Pt{x, (yv + yg) / 2}, SymOpt{
-		RefAt: ptr(Pt{x + 3.81, yv + 3.81}), ValAt: ptr(Pt{x + 3.81, yv + 6.35}), RefJust: "left", ValJust: "left"})
+		RefAt: ptr(Pt{x - 2.54, yv + 3.81}), ValAt: ptr(Pt{x - 2.54, yv + 6.35}), RefJust: "right", ValJust: "right"})
 	b.Wire(Pt{x, yv}, ce.Pin("1"))
 	b.Wire(ce.Pin("2"), Pt{x, yg})
 	b.Wire(Pt{x, yg}, Pt{x, yg + 1.27})
 	b.gnd(Pt{x, yg + 1.27})
-	xs := x + 13.97
+	xs := x + 11.43 // последний фильтр — левее столбца конденсаторов клавиатуры (нумерация по столбцам)
 	n := 10 // по конденсатору на корпус DD
 	if b.v.Decoder {
 		n = 11 // + дешифратор

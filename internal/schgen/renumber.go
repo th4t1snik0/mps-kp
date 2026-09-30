@@ -31,7 +31,7 @@ func (s *Sheet) Renumber() {
 			for _, p := range c.pins {
 				x0, x1 = min(x0, p.X), max(x1, p.X)
 			}
-			bs = append(bs, box{c, x0 - 1.27, x1 + 1.27, c.At.Y})
+			bs = append(bs, box{c, x0 - 0.5, x1 + 0.5, c.At.Y})
 		}
 		sort.SliceStable(bs, func(i, j int) bool { return bs[i].x0 < bs[j].x0 })
 		// столбцы: жадно сливаем перекрывающиеся по x

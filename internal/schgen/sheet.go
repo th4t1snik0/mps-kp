@@ -31,6 +31,7 @@ type Sheet struct {
 	buses   [][2]Pt
 	entries [][2]Pt
 	perp    bool
+	A4      bool // лист А4 книжный (перечень элементов), иначе А3 альбомный
 }
 
 type TitleBlock struct {
@@ -457,7 +458,7 @@ func (s *Sheet) String() string {
 		L("generator", Q("mpsgen")),
 		L("generator_version", Q("10.0")),
 		L("uuid", Q(s.rootID)),
-		L("paper", Q("A3")),
+		s.paperNode(),
 	)
 	tb := L("title_block")
 	if s.Title.Date != "" {
@@ -486,4 +487,11 @@ func (s *Sheet) String() string {
 	root.Kids = append(root.Kids, L("sheet_instances", L("path", Q("/"), L("page", Q("1")))))
 	root.Kids = append(root.Kids, L("embedded_fonts", A("no")))
 	return root.String()
+}
+
+func (s *Sheet) paperNode() *Node {
+	if s.A4 {
+		return L("paper", Q("A4"), A("portrait"))
+	}
+	return L("paper", Q("A3"))
 }
