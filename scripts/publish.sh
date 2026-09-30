@@ -17,7 +17,8 @@ repo="${GITHUB_REPOSITORY:?нужен GITHUB_REPOSITORY}"
 raw="https://raw.githubusercontent.com/$repo/results"
 tree="https://github.com/$repo/blob/results"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
-keep=(params.md params.json vars.inc schematic.png schematic.pdf schematic.kicad_sch schematic.kicad_pro ramka.kicad_wks erc-summary.txt erc.rpt)
+keep=(params.md params.json vars.inc schematic.png schematic.pdf schematic.kicad_sch schematic.kicad_pro ramka.kicad_wks erc-summary.txt erc.rpt
+      perechen.pdf perechen-km1.pdf perechen.md perechen-1.png perechen-2.png perechen-3.png perechen-km1-1.png)
 
 work="$(mktemp -d)"
 git config --global user.name "github-actions[bot]"
@@ -43,11 +44,11 @@ for attempt in 1 2 3; do
     echo
     echo "Ветка обновляется автоматически (Actions → build). Руками не править. Исходники — ветка \`main\`."
     echo
-    echo "| Группа | Вариант | Схема | Параметры | Асм | ERC |"
-    echo "| --- | --- | --- | --- | --- | --- |"
+    echo "| Группа | Вариант | Схема | Перечень | Параметры | Асм | ERC |"
+    echo "| --- | --- | --- | --- | --- | --- | --- |"
     (cd "$work/r" && find . -name params.md | sed 's|^\./||; s|/params.md$||' | sort -t/ -k1,1 -k2,2n) | while read -r n; do
       e="чисто"; [ -s "$work/r/$n/erc-summary.txt" ] && e="⚠ есть замечания"
-      echo "| ${n%%/*} | ${n#*/} | [PNG]($n/schematic.png) · [PDF]($n/schematic.pdf) · [KiCad]($n/schematic.kicad_sch) | [params.md]($n/params.md) | [vars.inc]($n/vars.inc) | $e |"
+      echo "| ${n%%/*} | ${n#*/} | [PNG]($n/schematic.png) · [PDF]($n/schematic.pdf) · [KiCad]($n/schematic.kicad_sch) | [ПЭ3]($n/perechen.pdf) · [КМ-1]($n/perechen-km1.pdf) | [params.md]($n/params.md) | [vars.inc]($n/vars.inc) | $e |"
     done
   } > "$work/r/README.md"
 
@@ -72,7 +73,7 @@ for d in "$@"; do
     grep -m1 "^Студент:" "$d/params.md" || true
     if [ -s "$d/erc-summary.txt" ]; then echo "⚠ ERC:"; echo '```'; cat "$d/erc-summary.txt"; echo '```'; else echo "ERC: чисто"; fi
     echo
-    echo "[PDF]($tree/$n/schematic.pdf) · [KiCad]($tree/$n/schematic.kicad_sch) · [vars.inc]($tree/$n/vars.inc) · [все файлы](https://github.com/$repo/tree/results/$n)"
+    echo "[Схема PDF]($tree/$n/schematic.pdf) · [KiCad]($tree/$n/schematic.kicad_sch) · [Перечень ПЭ3]($tree/$n/perechen.pdf) · [Перечень для КМ-1]($tree/$n/perechen-km1.pdf) · [vars.inc]($tree/$n/vars.inc) · [все файлы](https://github.com/$repo/tree/results/$n)"
     echo
     echo "[![схема]($raw/$n/schematic.png)]($raw/$n/schematic.png)"
     echo

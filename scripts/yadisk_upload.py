@@ -16,7 +16,8 @@ import urllib.request
 
 API = "https://cloud-api.yandex.net/v1/disk"
 KEEP = ["params.md", "params.json", "vars.inc", "schematic.png", "schematic.pdf",
-        "schematic.kicad_sch", "schematic.kicad_pro", "ramka.kicad_wks", "erc-summary.txt", "erc.rpt"]
+        "schematic.kicad_sch", "schematic.kicad_pro", "ramka.kicad_wks", "erc-summary.txt", "erc.rpt",
+        "perechen.pdf", "perechen-km1.pdf", "perechen.md", "perechen-1.png", "perechen-2.png", "perechen-3.png", "perechen-km1-1.png"]
 TOKEN = os.environ.get("YADISK_TOKEN", "")
 PUBLIC = os.environ.get("YADISK_PUBLIC", "")
 
