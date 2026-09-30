@@ -82,6 +82,21 @@ jobs:
           done
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
+      - name: ПЗ2 (у кого есть код)
+        env:
+          ONLY: ${{ inputs.student }}
+        run: |
+          go build -o bin/mpspz ./cmd/mpspz
+          for f in students/*/variant.yaml; do
+            s="$(basename "$(dirname "$f")")"
+            [ -n "$ONLY" ] && [ "$s" != "$ONLY" ] && continue
+            ls students/"$s"/code/prog[123].a51 >/dev/null 2>&1 || continue
+            echo "::group::$s"
+            bin/mpspz -student "$f" -doc pz2 || echo "::warning::ПЗ2 для $s не собралась"
+            echo "::endgroup::"
+          done
+          ls build/*/*/pz2/ 2>/dev/null || true
+
       - name: Результаты → ветка results
         if: github.ref == 'refs/heads/main'
         env:
@@ -103,21 +118,6 @@ jobs:
             build/**/code/
             build/**/pz2/
           retention-days: 7
-
-      - name: ПЗ2 (у кого есть код)
-        env:
-          ONLY: ${{ inputs.student }}
-        run: |
-          go build -o bin/mpspz ./cmd/mpspz
-          for f in students/*/variant.yaml; do
-            s="$(basename "$(dirname "$f")")"
-            [ -n "$ONLY" ] && [ "$s" != "$ONLY" ] && continue
-            ls students/"$s"/code/prog[123].a51 >/dev/null 2>&1 || continue
-            echo "::group::$s"
-            bin/mpspz -student "$f" -doc pz2 || echo "::warning::ПЗ2 для $s не собралась"
-            echo "::endgroup::"
-          done
-          ls build/*/*/pz2/ 2>/dev/null || true
 
       - name: Итог по студентам
         if: steps.students.outputs.status != '0'
