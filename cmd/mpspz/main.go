@@ -63,6 +63,9 @@ func main() {
 	textPath := filepath.Join(pzdir, *doc+".md")
 	txt, _ := os.ReadFile(textPath)
 	d := pz.NewDoc(out, pz.ParseStudent(string(txt)))
+	if *dstyle == "" {
+		*dstyle = st.PZStyle
+	}
 	d.Style = pz.PickDocStyle(*dstyle, fmt.Sprintf("%s|%s|%d", p.Student, st.GroupFull, p.M))
 	varsInc := render.Asm(p)
 
