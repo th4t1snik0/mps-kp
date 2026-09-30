@@ -304,7 +304,7 @@ func BuildPZ1(d *Doc, in PZ1) {
 		}
 		rows = append(rows, []string{esc(l.Refs), esc(l.Name), fmt.Sprint(l.Qty), esc(l.Note)})
 	}
-	d.TableW("Перечень элементов", []string{"Поз. обозначение", "Наименование", "Кол.", "Примечание"}, rows, []int{20, 110, 10, 45})
+	d.TableW("Перечень элементов", []string{"Поз. обозначение", "Наименование", "Кол.", "Примечание"}, rows, []int{20, 105, 12, 45})
 	d.Appendix("Схема электрическая принципиальная")
 	d.Figure(fmt.Sprintf("Схема электрическая принципиальная (группа %s, вариант %d, Э3)", in.GroupFull, p.M), fig("sheet"), 16.5)
 }

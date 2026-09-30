@@ -25,7 +25,7 @@ PUBLIC = os.environ.get("YADISK_PUBLIC", "")
 
 def call(method, endpoint, **params):
     url = API + endpoint + ("?" + urllib.parse.urlencode(params) if params else "")
-    for attempt in range(6):
+    for attempt in range(12):
         req = urllib.request.Request(url, method=method, headers={"Authorization": "OAuth " + TOKEN})
         try:
             with urllib.request.urlopen(req) as r:
@@ -34,8 +34,9 @@ def call(method, endpoint, **params):
         except urllib.error.HTTPError as e:
             body = e.read()
             # 423 — ресурс занят (параллельный запуск пишет в ту же папку), 429/5xx — подождать и повторить
-            if e.code in (423, 429, 500, 502, 503) and attempt < 5:
-                time.sleep(3 * (attempt + 1))
+            # 423 — папку в этот момент меняет другая джоба (КМ-1/2/3 публикуют одновременно), 429/5xx — подождать и повторить
+            if e.code in (423, 429, 500, 502, 503) and attempt < 11:
+                time.sleep(min(3 * (attempt + 1), 15))
                 continue
             return e.code, json.loads(body) if body else {}
 
@@ -71,6 +72,8 @@ def base_path():
 
 def mkdir(path):
     code, d = call("PUT", "/resources", path=path)
+    if code == 423 and exists(path):  # заблокирована соседней джобой, но уже создана
+        return
     if code not in (201, 409):  # 409 — уже есть
         sys.exit(f"яндекс-диск: mkdir {path} — {code} {d.get('description', d)}")
 
