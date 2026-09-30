@@ -18,7 +18,7 @@ func Pandoc() string {
 
 // Build собирает docx: markdown → pandoc с эталоном стилей. Рисунки ищутся в d.Dir.
 func Build(d *Doc, out string) error {
-	ref, err := ReferenceDocx(Pandoc())
+	ref, err := ReferenceDocx(Pandoc(), d.Style)
 	if err != nil {
 		return err
 	}

@@ -35,13 +35,16 @@ jobs:
           DOC: ${{ inputs.doc }}
         run: |
           go build -o bin/mpspz ./cmd/mpspz
-          bin/mpspz -student "students/$S/variant.yaml" -doc "$DOC"
-          d=$(dirname "$(ls build/*/*/$DOC/*.docx | head -1)")
-          soffice --headless --convert-to pdf --outdir "$d" "$d"/*.docx >/dev/null
           mkdir -p preview
-          pdftoppm -r 80 -png "$d"/*.pdf preview/p
-          go run ./scripts/montage 6 preview/sheet.png 'preview/p-*.png'
-          cp "$d"/*.pdf preview/
+          for st in A B C; do
+            bin/mpspz -student "students/$S/variant.yaml" -doc "$DOC" -style $st >/dev/null
+            d=$(dirname "$(ls build/*/*/$DOC/*.docx | head -1)")
+            soffice --headless --convert-to pdf --outdir "$d" "$d"/*.docx >/dev/null
+            mkdir -p preview/$st
+            pdftoppm -r 70 -png "$d"/*.pdf preview/$st/p
+            go run ./scripts/montage 6 preview/sheet-$st.png "preview/$st/p-*.png"
+            cp "$d"/*.pdf "preview/$DOC-$st.pdf"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: preview

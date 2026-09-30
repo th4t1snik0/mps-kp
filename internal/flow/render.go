@@ -13,22 +13,16 @@ import (
 
 // Размеры в мм (ГОСТ 19.701: a — высота, b = 2a допускается). Масштаб — px на мм.
 const (
-	blockA   = 15.0 // минимальная высота символа
-	blockB   = 40.0 // ширина символа
-	termH    = 10.0 // высота терминатора
 	loopH    = 12.0 // высота границы цикла
-	gap      = 5.0  // вертикальный промежуток между символами
 	sideGap  = 8.0  // горизонтальный промежуток между ветвями
-	fontMM   = 3.5  // высота шрифта
-	lineMM   = 4.4  // межстрочный интервал
 	padMM    = 2.0  // поле текста внутри символа
 	marginMM = 4.0  // поле рисунка
-	strokeMM = 0.35
 )
 
 // Options — отрисовка.
 type Options struct {
-	Font      []byte  // TTF (GOST type A из fonts/)
+	Style     Style   // вид (шрифт, размеры); нулевой — Default
+	Font      []byte  // TTF — файл Style.Font из fonts/
 	Scale     float64 // px на мм; 0 — 8 (≈ 200 dpi)
 	MaxHeight float64 // мм; выше — перенос в следующую колонку через соединители; 0 — 220 (лист А4 с подписью)
 }
@@ -41,11 +35,13 @@ const (
 type box struct{ l, r, h float64 } // ширина слева и справа от оси, высота
 
 type renderer struct {
-	dc    *gg.Context
-	s     float64
-	face  font.Face
-	sizes map[*Node]box
-	texts map[*Node][]string
+	st     Style
+	lineMM float64
+	dc     *gg.Context
+	s      float64
+	face   font.Face
+	sizes  map[*Node]box
+	texts  map[*Node][]string
 }
 
 // Render рисует схему в PNG-изображение.
@@ -53,13 +49,16 @@ func Render(c *Chart, o Options) (image.Image, error) {
 	if o.Scale == 0 {
 		o.Scale = 8
 	}
+	if o.Style.Font == "" {
+		o.Style = Default
+	}
 	f, err := truetype.Parse(o.Font)
 	if err != nil {
 		return nil, fmt.Errorf("шрифт: %w", err)
 	}
-	// размер шрифта в пунктах так, чтобы высота была fontMM при данном масштабе (72 pt = 1 дюйм = DPI px)
-	face := truetype.NewFace(f, &truetype.Options{Size: fontMM * o.Scale, DPI: 72, Hinting: font.HintingFull})
-	r := &renderer{dc: gg.NewContext(1, 1), s: o.Scale, face: face, sizes: map[*Node]box{}, texts: map[*Node][]string{}}
+	// размер шрифта в пунктах так, чтобы высота была r.st.FontMM при данном масштабе (72 pt = 1 дюйм = DPI px)
+	face := truetype.NewFace(f, &truetype.Options{Size: o.Style.FontMM * o.Scale, DPI: 72, Hinting: font.HintingFull})
+	r := &renderer{st: o.Style, lineMM: o.Style.FontMM * 1.26, dc: gg.NewContext(1, 1), s: o.Scale, face: face, sizes: map[*Node]box{}, texts: map[*Node][]string{}}
 	r.dc.SetFontFace(face)
 	if o.MaxHeight == 0 {
 		o.MaxHeight = 220
@@ -69,19 +68,19 @@ func Render(c *Chart, o Options) (image.Image, error) {
 	flat := flatten(c.Nodes)
 	total := r.seq(flat).h
 	k := math.Ceil(total / o.MaxHeight)
-	target := total/k + gap
+	target := total/k + r.st.Gap
 	var cols [][]*Node
 	var cur []*Node
 	curH := 0.0
 	for _, n := range flat {
 		h := r.size(n).h
 		// разрыв — перед символом, который выводит колонку за среднюю высоту (колонок ровно k)
-		if len(cur) > 0 && curH+gap+h/2 > target && len(cols) < int(k)-1 {
+		if len(cur) > 0 && curH+r.st.Gap+h/2 > target && len(cols) < int(k)-1 {
 			cols = append(cols, cur)
-			cur, curH = nil, connD+gap
+			cur, curH = nil, connD+r.st.Gap
 		}
 		if len(cur) > 0 {
-			curH += gap
+			curH += r.st.Gap
 		}
 		cur = append(cur, n)
 		curH += h
@@ -98,11 +97,11 @@ func Render(c *Chart, o Options) (image.Image, error) {
 		b := r.seq(ns)
 		cl := col{b: b}
 		if i > 0 {
-			cl.top = connD + gap
+			cl.top = connD + r.st.Gap
 		}
 		cl.height = cl.top + b.h
 		if i < len(cols)-1 {
-			cl.height += gap + connD
+			cl.height += r.st.Gap + connD
 		}
 		b.l, b.r = math.Max(b.l, connD/2), math.Max(b.r, connD/2)
 		cl.b = b
@@ -119,7 +118,7 @@ func Render(c *Chart, o Options) (image.Image, error) {
 	r.dc.SetRGB(1, 1, 1)
 	r.dc.Clear()
 	r.dc.SetRGB(0, 0, 0)
-	r.dc.SetLineWidth(strokeMM * o.Scale)
+	r.dc.SetLineWidth(r.st.Stroke * o.Scale)
 	r.dc.SetLineCap(gg.LineCapSquare)
 	x := marginMM
 	for i, cl := range cs {
@@ -132,8 +131,8 @@ func Render(c *Chart, o Options) (image.Image, error) {
 		r.drawSeq(cols[i], x, y+cl.top)
 		if i < len(cs)-1 {
 			yb := y + cl.top + cl.b.h
-			r.line(x, yb, x, yb+gap)
-			r.connector(x, yb+gap, fmt.Sprintf("%c", 'А'+rune(i)))
+			r.line(x, yb, x, yb+r.st.Gap)
+			r.connector(x, yb+r.st.Gap, fmt.Sprintf("%c", 'А'+rune(i)))
 		}
 		x += cl.b.r + colGap
 	}
@@ -191,42 +190,42 @@ func (r *renderer) size(n *Node) box {
 	var b box
 	switch n.Kind {
 	case Terminator:
-		lines := r.wrap(n.Text, blockB-2*padMM-4)
+		lines := r.wrap(n.Text, r.st.BlockB-2*padMM-4)
 		r.texts[n] = lines
-		b = box{blockB / 2, blockB / 2, math.Max(termH, float64(len(lines))*lineMM+3)}
+		b = box{r.st.BlockB / 2, r.st.BlockB / 2, math.Max(r.lineMM*2.3, float64(len(lines))*r.lineMM+3)}
 	case Process, Predefined, Data:
-		w := blockB - 2*padMM
+		w := r.st.BlockB - 2*padMM
 		if n.Kind != Process {
 			w -= 6 // двойные линии / скос параллелограмма
 		}
 		lines := r.wrap(n.Text, w)
 		r.texts[n] = lines
-		b = box{blockB / 2, blockB / 2, math.Max(blockA, roundUp5(float64(len(lines))*lineMM+2*padMM))}
+		b = box{r.st.BlockB / 2, r.st.BlockB / 2, math.Max(r.st.BlockA, roundUp5(float64(len(lines))*r.lineMM+2*padMM))}
 	case Decision:
 		// текст — во вписанном прямоугольнике ромба (половина ширины и высоты)
-		dw := blockB + 10
+		dw := r.st.BlockB + 10
 		lines := r.wrap(n.Text, dw/2+4)
 		r.texts[n] = lines
-		dh := math.Max(blockA+5, roundUp5(2*(float64(len(lines))*lineMM+1)))
+		dh := math.Max(r.st.BlockA+5, roundUp5(2*(float64(len(lines))*r.lineMM+1)))
 		yes, no := r.seq(n.Yes), r.seq(n.No)
 		dx := r.sideX(n)
-		h := dh + gap + math.Max(yes.h, no.h) + gap
+		h := dh + r.st.Gap + math.Max(yes.h, no.h) + r.st.Gap
 		b = box{math.Max(dw/2, yes.l), math.Max(dw/2+sideGap, dx+no.r), h}
 		r.sizes[n] = b
 		r.texts[n] = lines
 		return b
 	case loopBegin:
-		lines := append([]string{n.LoopName}, r.wrap(n.Text, blockB-2*padMM-4)...)
+		lines := append([]string{n.LoopName}, r.wrap(n.Text, r.st.BlockB-2*padMM-4)...)
 		r.texts[n] = lines
-		b = box{blockB / 2, blockB / 2, math.Max(loopH, float64(len(lines))*lineMM+4)}
+		b = box{r.st.BlockB / 2, r.st.BlockB / 2, math.Max(loopH, float64(len(lines))*r.lineMM+4)}
 	case loopEnd:
-		b = box{blockB / 2, blockB / 2, loopH}
+		b = box{r.st.BlockB / 2, r.st.BlockB / 2, loopH}
 	case Loop:
-		lines := append([]string{n.LoopName}, r.wrap(n.Text, blockB-2*padMM-4)...)
+		lines := append([]string{n.LoopName}, r.wrap(n.Text, r.st.BlockB-2*padMM-4)...)
 		r.texts[n] = lines
 		body := r.seq(n.Body)
-		lh := math.Max(loopH, float64(len(lines))*lineMM+4)
-		b = box{math.Max(blockB/2, body.l), math.Max(blockB/2, body.r), lh + gap + body.h + gap + loopH}
+		lh := math.Max(loopH, float64(len(lines))*r.lineMM+4)
+		b = box{math.Max(r.st.BlockB/2, body.l), math.Max(r.st.BlockB/2, body.r), lh + r.st.Gap + body.h + r.st.Gap + loopH}
 	}
 	r.sizes[n] = b
 	return b
@@ -234,17 +233,17 @@ func (r *renderer) size(n *Node) box {
 
 // sideX — ось ветви «нет» справа от оси решения.
 func (r *renderer) sideX(n *Node) float64 {
-	dw := blockB + 10
+	dw := r.st.BlockB + 10
 	yes, no := r.seq(n.Yes), r.seq(n.No)
 	return math.Max(dw/2+sideGap, yes.r+sideGap+no.l)
 }
 
 func (r *renderer) decisionH(n *Node) float64 {
-	return math.Max(blockA+5, roundUp5(2*(float64(len(r.texts[n]))*lineMM+1)))
+	return math.Max(r.st.BlockA+5, roundUp5(2*(float64(len(r.texts[n]))*r.lineMM+1)))
 }
 
 func (r *renderer) loopTopH(n *Node) float64 {
-	return math.Max(loopH, float64(len(r.texts[n]))*lineMM+4)
+	return math.Max(loopH, float64(len(r.texts[n]))*r.lineMM+4)
 }
 
 func (r *renderer) seq(ns []*Node) box {
@@ -254,7 +253,7 @@ func (r *renderer) seq(ns []*Node) box {
 		b.l, b.r = math.Max(b.l, s.l), math.Max(b.r, s.r)
 		b.h += s.h
 		if i > 0 {
-			b.h += gap
+			b.h += r.st.Gap
 		}
 	}
 	return b
@@ -279,9 +278,9 @@ func (r *renderer) arrow(x, y, dx, dy float64) {
 }
 
 func (r *renderer) text(lines []string, x, cy float64) {
-	top := cy - float64(len(lines))*lineMM/2
+	top := cy - float64(len(lines))*r.lineMM/2
 	for i, l := range lines {
-		r.dc.DrawStringAnchored(l, x*r.s, (top+(float64(i)+0.5)*lineMM)*r.s, 0.5, 0.35)
+		r.dc.DrawStringAnchored(l, x*r.s, (top+(float64(i)+0.5)*r.lineMM)*r.s, 0.5, 0.35)
 	}
 }
 
@@ -308,8 +307,11 @@ func (r *renderer) poly(pts ...float64) {
 func (r *renderer) drawSeq(ns []*Node, x, y float64) {
 	for i, n := range ns {
 		if i > 0 {
-			r.line(x, y, x, y+gap)
-			y += gap
+			r.line(x, y, x, y+r.st.Gap)
+			if r.st.JoinArrows {
+				r.arrow(x, y+r.st.Gap, 0, 1)
+			}
+			y += r.st.Gap
 		}
 		r.draw(n, x, y)
 		y += r.size(n).h
@@ -318,11 +320,11 @@ func (r *renderer) drawSeq(ns []*Node, x, y float64) {
 
 func (r *renderer) draw(n *Node, x, y float64) {
 	b := r.size(n)
-	hw := blockB / 2
+	hw := r.st.BlockB / 2
 	switch n.Kind {
 	case Terminator:
 		h := b.h
-		r.dc.DrawRoundedRectangle((x-hw)*r.s, y*r.s, blockB*r.s, h*r.s, h/2*r.s)
+		r.dc.DrawRoundedRectangle((x-hw)*r.s, y*r.s, r.st.BlockB*r.s, h*r.s, h*r.st.TermRadius*r.s)
 		r.dc.Stroke()
 		r.text(r.texts[n], x, y+h/2)
 	case Process:
@@ -350,25 +352,25 @@ func (r *renderer) draw(n *Node, x, y float64) {
 		th := r.loopTopH(n)
 		r.poly(x-hw+c, y, x+hw-c, y, x+hw, y+c, x+hw, y+th, x-hw, y+th, x-hw, y+c)
 		r.text(r.texts[n], x, y+th/2)
-		r.line(x, y+th, x, y+th+gap)
+		r.line(x, y+th, x, y+th+r.st.Gap)
 		body := r.seq(n.Body)
-		r.drawSeq(n.Body, x, y+th+gap)
-		yb := y + th + gap + body.h
-		r.line(x, yb, x, yb+gap)
-		ye := yb + gap
+		r.drawSeq(n.Body, x, y+th+r.st.Gap)
+		yb := y + th + r.st.Gap + body.h
+		r.line(x, yb, x, yb+r.st.Gap)
+		ye := yb + r.st.Gap
 		r.poly(x-hw, ye, x+hw, ye, x+hw, ye+loopH-c, x+hw-c, ye+loopH, x-hw+c, ye+loopH, x-hw, ye+loopH-c)
 		r.text([]string{n.LoopName}, x, ye+loopH/2)
 	case Decision:
-		dw := blockB + 10
+		dw := r.st.BlockB + 10
 		dh := r.decisionH(n)
 		r.poly(x, y, x+dw/2, y+dh/2, x, y+dh, x-dw/2, y+dh/2)
 		r.text(r.texts[n], x, y+dh/2)
 		yes, no := r.seq(n.Yes), r.seq(n.No)
 		dx := x + r.sideX(n)
-		top := y + dh + gap
-		merge := top + math.Max(yes.h, no.h) + gap
+		top := y + dh + r.st.Gap
+		merge := top + math.Max(yes.h, no.h) + r.st.Gap
 		// «да» — вниз по оси
-		r.label("да", x+1.2, y+dh+2.2, 0)
+		r.label(r.st.YesNo[0], x+1.2, y+dh+2.2, 0)
 		if len(n.Yes) > 0 {
 			r.line(x, y+dh, x, top)
 			r.drawSeq(n.Yes, x, top)
@@ -377,7 +379,7 @@ func (r *renderer) draw(n *Node, x, y float64) {
 			r.line(x, y+dh, x, merge)
 		}
 		// «нет» — вправо и вниз, возврат на ось со стрелкой (поток справа налево)
-		r.label("нет", x+dw/2+1.2, y+dh/2-2.2, 0)
+		r.label(r.st.YesNo[1], x+dw/2+1.2, y+dh/2-2.2, 0)
 		r.line(x+dw/2, y+dh/2, dx, y+dh/2)
 		if len(n.No) > 0 {
 			r.line(dx, y+dh/2, dx, top)

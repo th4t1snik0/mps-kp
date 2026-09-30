@@ -31,7 +31,9 @@ func main() {
 		doc     = flag.String("doc", "pz2", "pz1 | pz2")
 		outroot = flag.String("outroot", "build", "корень результатов")
 		initF   = flag.Bool("init", false, "создать/дополнить students/<ник>/pz/<doc>.md и заготовки схем алгоритмов")
-		fontF   = flag.String("font", "fonts/GOST_A.ttf", "шрифт для рисунков")
+		fontDir = flag.String("fonts", "fonts", "папка шрифтов")
+		dstyle  = flag.String("style", "", "вид документа A | B | C (пусто — от ФИО)")
+		plain   = flag.Bool("plain", false, "схемы алгоритмов в виде по умолчанию (GOST type A), без вариаций от ФИО")
 	)
 	flag.Parse()
 	if *student == "" {
@@ -51,12 +53,17 @@ func main() {
 		os.RemoveAll(out) // прошлая сборка (старые рисунки)
 	}
 	die(os.MkdirAll(out, 0o755))
-	font, err := os.ReadFile(*fontF)
+	fst := flow.PickStyle(fmt.Sprintf("%s|%s|%d", p.Student, st.GroupFull, p.M))
+	if *plain {
+		fst = flow.Default
+	}
+	font, err := os.ReadFile(filepath.Join(*fontDir, fst.Font))
 	die(err)
 
 	textPath := filepath.Join(pzdir, *doc+".md")
 	txt, _ := os.ReadFile(textPath)
 	d := pz.NewDoc(out, pz.ParseStudent(string(txt)))
+	d.Style = pz.PickDocStyle(*dstyle, fmt.Sprintf("%s|%s|%d", p.Student, st.GroupFull, p.M))
 	varsInc := render.Asm(p)
 
 	switch *doc {
@@ -84,7 +91,7 @@ func main() {
 			if err != nil {
 				die(fmt.Errorf("%s: %w", f, err))
 			}
-			img, err := flow.Render(c, flow.Options{Font: font})
+			img, err := flow.Render(c, flow.Options{Font: font, Style: fst})
 			die(err)
 			id := strings.TrimSuffix(filepath.Base(f), ".flow")
 			pngName := "flow-" + id + ".png"
@@ -96,7 +103,9 @@ func main() {
 			if title == "" {
 				title = id
 			}
-			in.Flows = append(in.Flows, pz.FlowFig{ID: id, Title: title, File: pngName})
+			// натуральный размер (8 px на мм), не шире поля страницы
+			wcm := float64(img.Bounds().Dx()) / 8 / 10
+			in.Flows = append(in.Flows, pz.FlowFig{ID: id, Title: title, File: pngName, WidthCm: min(wcm, 17)})
 		}
 		pz.BuildPZ2(d, in)
 	default:

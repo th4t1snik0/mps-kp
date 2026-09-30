@@ -20,17 +20,18 @@ type Fill struct {
 // Doc — markdown для pandoc с нумерацией разделов, рисунков, таблиц.
 type Doc struct {
 	b          strings.Builder
-	h1, h2     int
+	h1, h2, h3 int
 	fig, tab   int
 	Dir        string            // папка сборки (рисунки кладутся сюда)
 	Student    map[string]string // текст студента по ид
 	Fills      []Fill
 	appendixNo int
+	Style      DocStyle
 }
 
 // NewDoc — документ; student — разобранный students/<ник>/pz/pzN.md (может быть nil).
 func NewDoc(dir string, student map[string]string) *Doc {
-	return &Doc{Dir: dir, Student: student}
+	return &Doc{Dir: dir, Student: student, Style: docStyles["C"]}
 }
 
 func esc(s string) string {
@@ -65,7 +66,14 @@ func (d *Doc) H1(title string, num bool) {
 	if num {
 		d.h1++
 		d.h2 = 0
-		d.w("\n# %d %s {-}\n\n", d.h1, esc(title))
+		if d.Style.FigBySection {
+			d.fig, d.tab = 0, 0
+		}
+		dot := ""
+		if d.Style.H1Center {
+			dot = "."
+		}
+		d.w("\n# %d%s %s {-}\n\n", d.h1, dot, esc(title))
 		return
 	}
 	d.w("\n# %s {-}\n\n", esc(title))
@@ -74,7 +82,18 @@ func (d *Doc) H1(title string, num bool) {
 // H2 — подраздел «N.M Название».
 func (d *Doc) H2(title string) {
 	d.h2++
-	d.w("\n## %d.%d %s {-}\n\n", d.h1, d.h2, esc(title))
+	d.h3 = 0
+	dot := ""
+	if d.Style.H1Center {
+		dot = "."
+	}
+	d.w("\n## %d.%d%s %s {-}\n\n", d.h1, d.h2, dot, esc(title))
+}
+
+// H3 — пункт «N.M.K Название».
+func (d *Doc) H3(title string) {
+	d.h3++
+	d.w("\n### %d.%d.%d %s {-}\n\n", d.h1, d.h2, d.h3, esc(title))
 }
 
 // P — абзац (markdown разрешён: **жирный**, *курсив*).
@@ -89,12 +108,26 @@ func (d *Doc) Bullets(items ...string) {
 }
 
 // NextFig / NextTab — номер, который получит следующий рисунок / таблица (для ссылок в тексте до них).
-func (d *Doc) NextFig() int { return d.fig + 1 }
-func (d *Doc) NextTab() int { return d.tab + 1 }
+func (d *Doc) NextFig() string { return d.label(d.fig + 1) }
+func (d *Doc) NextTab() string { return d.label(d.tab + 1) }
 
-// Table — таблица с подписью «Таблица N — …» над ней. Возвращает номер.
-func (d *Doc) Table(caption string, head []string, rows [][]string) int {
+func (d *Doc) label(n int) string {
+	if d.Style.FigBySection && d.h1 > 0 {
+		return fmt.Sprintf("%d.%d", d.h1, n)
+	}
+	return fmt.Sprint(n)
+}
+
+// Table — таблица с подписью над ней («Таблица N — …» или «Таблица N» справа + название по центру). Возвращает номер.
+func (d *Doc) Table(caption string, head []string, rows [][]string) string {
 	d.tab++
+	n := d.label(d.tab)
+	if d.Style.TabRight {
+		d.Styled("TableNum", "Таблица "+n)
+		d.Styled("TableCaption", esc(caption))
+	} else {
+		d.Styled("TableCaption", "Таблица "+n+" — "+esc(caption))
+	}
 	d.w("\n")
 	line := func(cells []string) {
 		d.w("|")
@@ -112,18 +145,24 @@ func (d *Doc) Table(caption string, head []string, rows [][]string) int {
 	for _, r := range rows {
 		line(r)
 	}
-	d.w("\nTable: Таблица %d — %s\n\n", d.tab, esc(caption))
-	return d.tab
+	d.w("\n")
+	return n
 }
 
-// Figure — рисунок из файла (копируется в Dir) с подписью «Рисунок N — …» под ним. widthCm = 0 — 16 см.
-func (d *Doc) Figure(caption, file string, widthCm float64) int {
+// Figure — рисунок из файла (в Dir) по центру с подписью под ним («Рисунок N — …» или «Рис. N. …»). widthCm = 0 — 16 см.
+func (d *Doc) Figure(caption, file string, widthCm float64) string {
 	d.fig++
+	n := d.label(d.fig)
 	if widthCm == 0 {
 		widthCm = 16
 	}
-	d.w("\n![Рисунок %d — %s](%s){width=%.1fcm}\n\n", d.fig, esc(caption), filepath.ToSlash(file), widthCm)
-	return d.fig
+	d.w("\n::: {custom-style=\"Figure\"}\n![](%s){width=%.1fcm}\n:::\n\n", filepath.ToSlash(file), widthCm)
+	if d.Style.FigShort {
+		d.Styled("ImageCaption", "Рис. "+n+". "+esc(caption))
+	} else {
+		d.Styled("ImageCaption", "Рисунок "+n+" — "+esc(caption))
+	}
+	return n
 }
 
 // Formula — формула по центру с номером справа не делаем (ГОСТ допускает без номера, если нет ссылок).
