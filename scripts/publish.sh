@@ -46,7 +46,7 @@ for attempt in 1 2 3; do
     name="${d#build/}"
     v="$work/r/$name"
     mkdir -p "$v"
-    last="$(ls -d "$v"/прогон-* 2>/dev/null | sed 's|.*/прогон-||' | sort -n | tail -1)"
+    last="$(ls -d "$v"/прогон-* 2>/dev/null | sed 's|.*/прогон-||' | sort -n | tail -1 || true)"
     n=$(( ${last:-0} + 1 ))
     out="$v/прогон-$n"
     mkdir -p "$out"
@@ -80,9 +80,9 @@ for attempt in 1 2 3; do
       for k in $runs; do
         [ -f "$work/r/$n/прогон-$k/params.md" ] && s="$k"
         [ -f "$work/r/$n/прогон-$k/code/report.md" ] && c="$k"
-        f1="$(ls "$work/r/$n/прогон-$k/pz1/"*.docx 2>/dev/null | head -1)"
+        f1="$(ls "$work/r/$n/прогон-$k/pz1/"*.docx 2>/dev/null | head -1 || true)"
         [ -n "$f1" ] && pz1="[прогон $k]($n/прогон-$k/pz1/$(basename "$f1" | sed 's/ /%20/g'))"
-        f2="$(ls "$work/r/$n/прогон-$k/pz2/"*.docx 2>/dev/null | head -1)"
+        f2="$(ls "$work/r/$n/прогон-$k/pz2/"*.docx 2>/dev/null | head -1 || true)"
         [ -n "$f2" ] && pz2="[прогон $k]($n/прогон-$k/pz2/$(basename "$f2" | sed 's/ /%20/g'))"
       done
       if [ -n "$s" ]; then
