@@ -18,6 +18,12 @@
 
 ---
 
+### 2026-09-30/15 — поле «Преподаватель» (Пров.)
+- **Кто:** ivan + Claude Code          **Подтвердил:** ivan
+- **Где:** `cmd/mpsgen` (`-checker`), `Makefile` (`CHK`, по умолчанию «Михалин С.Н.»), CI (поле checker в Run workflow)
+- **Было → стало:** проверяющий только из variant.yaml / по умолчанию → ещё и полем при запуске.
+- **Проверено дважды:** 1) `make try … CHK="Гольцов А.Г."` → title_block comment 3; 2) без CHK → «Михалин С.Н.».
+
 ### 2026-09-30/14 — схема под ТЗ-2026: дешифратор CS, A11–A12, 33 н, ОА у А-12
 - **Кто:** ivan + Claude Code          **Подтвердил:** ivan («нужно вбить все это дело… чтобы все было актуально»)
 - **Где:** `internal/schgen/mps.go` (режим `Decoder`), `cmd/mpslib` (+74HC138), `cmd/mpsgen`, `Makefile` (TABLE = 2026), CI, `AGENTS.md`, README

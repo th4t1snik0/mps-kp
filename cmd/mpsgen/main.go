@@ -29,14 +29,15 @@ func main() {
 		m      = flag.Int("m", 0, "номер варианта (вместо -student)")
 		out    = flag.String("out", "", "папка для результатов (по умолчанию <outroot>/<группа>/<вариант>)")
 		root   = flag.String("outroot", "build", "корень для результатов")
-		name   = flag.String("name", "", "Фамилия И.О. в рамку (вместо name в variant.yaml)")
+		name   = flag.String("name", "", "Фамилия И.О. студента в рамку (вместо name в variant.yaml)")
+		chk    = flag.String("checker", "", "Фамилия И.О. преподавателя (по умолчанию Михалин С.Н.)")
 		year   = flag.String("year", "23", "год набора группы: А-12 → А-12-<year>")
 		doRend = flag.Bool("render", false, "после генерации запустить scripts/render.sh (PDF, PNG, ERC)")
 		lib    = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
 		wks    = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
 	)
 	flag.Parse()
-	dir, err := run(*table, *stud, *group, *m, *name, *year, *root, *out, *lib, *wks)
+	dir, err := run(*table, *stud, *group, *m, *name, *chk, *year, *root, *out, *lib, *wks)
 	if err == nil && *doRend {
 		cmd := exec.Command("scripts/render.sh", dir)
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
@@ -48,7 +49,7 @@ func main() {
 	}
 }
 
-func run(tablePath, studPath, group string, m int, name, year, root, out, libPath, wksPath string) (string, error) {
+func run(tablePath, studPath, group string, m int, name, checker, year, root, out, libPath, wksPath string) (string, error) {
 	tb, err := variant.LoadTable(tablePath)
 	if err != nil {
 		return "", err
@@ -63,6 +64,9 @@ func run(tablePath, studPath, group string, m int, name, year, root, out, libPat
 	}
 	if name != "" {
 		st.Name = name
+	}
+	if checker != "" {
+		st.Checker = checker
 	}
 	st.Defaults(year, time.Now())
 	if out == "" {

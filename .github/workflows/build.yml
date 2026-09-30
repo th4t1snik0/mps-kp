@@ -31,9 +31,13 @@ on:
         required: false
         default: ""
       fio:
-        description: "Фамилия И.О. — в рамку (Разраб.)"
+        description: "Фамилия И.О. студента — в рамку (Разраб.)"
         required: false
         default: ""
+      checker:
+        description: "Фамилия И.О. преподавателя — в рамку (Пров.)"
+        required: false
+        default: "Михалин С.Н."
       year:
         description: "Год набора группы: А-12 → А-12-<год>"
         required: false
@@ -73,8 +77,9 @@ jobs:
           G: ${{ inputs.group }}
           M: ${{ inputs.m }}
           FIO: ${{ inputs.fio }}
+          CHK: ${{ inputs.checker }}
           Y: ${{ inputs.year }}
-        run: make try G="$G" M="$M" FIO="$FIO" Y="${Y:-23}"
+        run: make try G="$G" M="$M" FIO="$FIO" CHK="${CHK:-Михалин С.Н.}" Y="${Y:-23}"
 
       - name: Все студенты
         if: github.event_name == 'push' || inputs.group == ''
