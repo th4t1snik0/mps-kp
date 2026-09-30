@@ -34,19 +34,31 @@ def call(method, path, **params):
 
 
 def base_path():
-    """Путь папки по публичной ссылке — среди опубликованных ресурсов владельца токена."""
-    key = PUBLIC.rstrip("/")
-    offset = 0
+    """Путь папки по публичной ссылке на диске владельца токена.
+
+    Сравниваем по resource_id (публичная ссылка в списке опубликованного может быть в другом
+    виде: yadi.sk/d/…, disk.yandex.ru/d/…); запасной вариант — по хвосту ссылки /d/<id>.
+    """
+    code, info = call("GET", "/public/resources", public_key=PUBLIC, fields="resource_id,name,type")
+    if code != 200:
+        sys.exit(f"яндекс-диск: ссылка {PUBLIC} — {code} {info.get('description', info)}")
+    rid = info.get("resource_id", "")
+    tail = PUBLIC.rstrip("/").rsplit("/d/", 1)[-1]
+    offset, seen = 0, 0
     while True:
-        code, d = call("GET", "/resources/public", limit=100, offset=offset, type="dir", fields="items.path,items.public_url,items.public_key")
+        code, d = call("GET", "/resources/public", limit=100, offset=offset, type="dir",
+                       fields="items.path,items.public_url,items.resource_id")
         if code != 200:
             sys.exit(f"яндекс-диск: список опубликованного — {code} {d.get('description', d)} (токен и права?)")
         items = d.get("items", [])
+        seen += len(items)
         for it in items:
-            if key in (it.get("public_url", "").rstrip("/"), it.get("public_key", "")):
+            if (rid and it.get("resource_id") == rid) or it.get("public_url", "").rstrip("/").endswith("/d/" + tail):
                 return it["path"]
         if len(items) < 100:
-            sys.exit(f"яндекс-диск: папка {PUBLIC} не найдена среди опубликованных у владельца токена")
+            # имена чужих папок в лог не пишем — лог публичного репо виден всем
+            sys.exit(f"яндекс-диск: папка «{info.get('name')}» не найдена среди {seen} опубликованных папок владельца токена "
+                     "(токен от другого аккаунта?)")
         offset += 100
 
 
