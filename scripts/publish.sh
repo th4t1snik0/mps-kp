@@ -36,14 +36,16 @@ for attempt in 1 2 3; do
     # старая плоская раскладка (<папка>/params.md) — убрать, теперь только <группа>/<вариант>/
     find "$work/r" -mindepth 2 -maxdepth 2 -name params.md -exec dirname {} \; | xargs -r rm -rf
   fi
+  # раскладка до прогонов: файлы прямо в папке варианта → прогон-1 (у всех вариантов ветки, не только у этого запуска)
+  find "$work/r" -mindepth 2 -maxdepth 2 -type d ! -name '.*' | while read -r v; do
+    if ! ls -d "$v"/прогон-* >/dev/null 2>&1 && [ -n "$(ls -A "$v")" ]; then
+      mkdir "$v/прогон-1" && find "$v" -mindepth 1 -maxdepth 1 ! -name прогон-1 -exec mv {} "$v/прогон-1/" \;
+    fi
+  done
   for d in "$@"; do
     name="${d#build/}"
     v="$work/r/$name"
     mkdir -p "$v"
-    # раскладка до прогонов: файлы прямо в папке варианта → прогон-1
-    if ! ls -d "$v"/прогон-* >/dev/null 2>&1 && [ -n "$(ls -A "$v")" ]; then
-      mkdir "$v/прогон-1" && find "$v" -mindepth 1 -maxdepth 1 ! -name прогон-1 -exec mv {} "$v/прогон-1/" \;
-    fi
     last="$(ls -d "$v"/прогон-* 2>/dev/null | sed 's|.*/прогон-||' | sort -n | tail -1)"
     n=$(( ${last:-0} + 1 ))
     out="$v/прогон-$n"
