@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -33,30 +34,58 @@ func (p ByParity) At(m int) string {
 	return p.Odd
 }
 
+// Choice — значение, общее для всех M («P2.5», «Y5») или зависящее от чётности M ({even: …, odd: …}).
+type Choice struct {
+	Even, Odd string
+}
+
+func (c *Choice) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		c.Even, c.Odd = n.Value, n.Value
+		return nil
+	}
+	var p struct{ Even, Odd string }
+	if err := n.Decode(&p); err != nil {
+		return err
+	}
+	c.Even, c.Odd = p.Even, p.Odd
+	return nil
+}
+
+func (c Choice) At(m int) string {
+	if m%2 == 0 {
+		return c.Even
+	}
+	return c.Odd
+}
+
 type GroupRow struct {
-	T1ms      Linear   `yaml:"t1_ms"`
-	Y1Timer   int      `yaml:"y1_timer"`
-	CSBuf     string   `yaml:"cs_buf"`
-	VBytes    Linear   `yaml:"v_bytes"`
-	HeadAddr  int      `yaml:"head_addr"`
-	TailAddr  int      `yaml:"tail_addr"`
-	EmptyBit  Linear   `yaml:"empty_bit"`
-	OvfBit    Linear   `yaml:"ovf_bit"`
-	CSY2      string   `yaml:"cs_y2"`
-	Y2Timer   int      `yaml:"y2_timer"`
-	T2us      Linear   `yaml:"t2_us"`
-	CSInd     ByParity `yaml:"cs_ind"`
-	T3ms      Linear   `yaml:"t3_ms"`
-	T3Timer   int      `yaml:"t3_timer"`
-	Indicator string   `yaml:"indicator"`
-	CSKb      string   `yaml:"cs_kb"`
-	KbInt     string   `yaml:"kb_int"`
+	G         int    `yaml:"g"` // номер группы (ТЗ-2026: Y2 = (G+M+X1+X2) mod 256)
+	T1ms      Linear `yaml:"t1_ms"`
+	Y1Timer   int    `yaml:"y1_timer"`
+	CSBuf     Choice `yaml:"cs_buf"`
+	VBytes    Linear `yaml:"v_bytes"`
+	HeadAddr  int    `yaml:"head_addr"`
+	TailAddr  int    `yaml:"tail_addr"`
+	EmptyBit  Linear `yaml:"empty_bit"`
+	OvfBit    Linear `yaml:"ovf_bit"`
+	CSY2      Choice `yaml:"cs_y2"`
+	Y2Timer   int    `yaml:"y2_timer"`
+	T2us      Linear `yaml:"t2_us"`
+	CSInd     Choice `yaml:"cs_ind"`
+	T3ms      Linear `yaml:"t3_ms"`
+	T3Timer   int    `yaml:"t3_timer"`
+	Indicator string `yaml:"indicator"`
+	CSKb      Choice `yaml:"cs_kb"`
+	KbInt     string `yaml:"kb_int"`
 }
 
 type Table struct {
 	Year          int                 `yaml:"year"`
 	CrystalMHz    int                 `yaml:"crystal_mhz"`
 	X2MaxRatePerS int                 `yaml:"x2_max_rate_per_s"`
+	CSMode        string              `yaml:"cs_mode"`   // pins (2025: CS — линии P2.x) | decoder (2026: выходы 74HC138)
+	CSEnPin       string              `yaml:"cs_en_pin"` // decoder: вывод МК, разрешающий дешифратор (P3.4)
 	Groups        map[string]GroupRow `yaml:"groups"`
 }
 
@@ -74,6 +103,9 @@ func LoadTable(path string) (*Table, error) {
 	}
 	if t.X2MaxRatePerS == 0 {
 		t.X2MaxRatePerS = 5
+	}
+	if t.CSMode == "" {
+		t.CSMode = "pins"
 	}
 	return &t, nil
 }
@@ -175,6 +207,11 @@ type Params struct {
 	Student string `json:"student"`
 	Checker string `json:"checker"`
 
+	G       int    `json:"g"`       // номер группы (0 — нет в таблице)
+	CSMode  string `json:"cs_mode"` // pins | decoder
+	CSEnPin string `json:"cs_en_pin"`
+	X2Rate  int    `json:"x2_rate"`
+
 	Keyboard  string `json:"keyboard"` // "4x3" | "3x4" (столбцы × строки)
 	Cols      int    `json:"cols"`
 	Rows      int    `json:"rows"`
@@ -221,7 +258,8 @@ func Compute(t *Table, s *Student) (*Params, error) {
 		return nil, fmt.Errorf("M=%d вне диапазона 1..30", s.M)
 	}
 	m := s.M
-	p := &Params{Year: t.Year, Group: s.Group, M: m, K: m % 7, Student: s.Name, Checker: s.Checker, CrystalMHz: t.CrystalMHz}
+	p := &Params{Year: t.Year, Group: s.Group, M: m, K: m % 7, Student: s.Name, Checker: s.Checker, CrystalMHz: t.CrystalMHz,
+		G: g.G, CSMode: t.CSMode, CSEnPin: t.CSEnPin, X2Rate: t.X2MaxRatePerS}
 
 	if p.K+1 > 7 {
 		return nil, fmt.Errorf("k+1 > 7")
@@ -242,7 +280,7 @@ func Compute(t *Table, s *Student) (*Params, error) {
 	case 1:
 		p.Prog3 = "строб Y1 длительностью T1 (таймер)"
 	case 2:
-		p.Prog3 = "расчёт Y2 = (M+X1+X2) mod 256, запись в регистр, строб T2 (таймер)"
+		p.Prog3 = "расчёт Y2 = (" + p.Y2Sum() + "+X1+X2) mod 256, запись в регистр, строб T2 (таймер)"
 	}
 
 	p.Indicator = g.Indicator
@@ -284,19 +322,36 @@ func Compute(t *Table, s *Student) (*Params, error) {
 		return nil, fmt.Errorf("адрес бита флага вне bit-области")
 	}
 
-	// Устройства: 4 CS на P2.3..P2.7, одна линия лишняя.
-	cs := map[string]string{"Буфер (IDT7005)": g.CSBuf, "Регистр Y2": g.CSY2, "Индикатор": g.CSInd.At(m), "Клавиатура": g.CSKb}
+	cs := map[string]string{"Буфер (IDT7005)": g.CSBuf.At(m), "Регистр Y2": g.CSY2.At(m), "Индикатор": g.CSInd.At(m), "Клавиатура": g.CSKb.At(m)}
+	order := []string{"Индикатор", "Клавиатура", "Буфер (IDT7005)", "Регистр Y2"}
+	switch t.CSMode {
+	case "decoder":
+		if err := p.decoderCS(cs, order); err != nil {
+			return nil, err
+		}
+	default:
+		if err := p.pinCS(cs, order); err != nil {
+			return nil, err
+		}
+	}
+
+	p.FillTimeS = float64(p.V) / float64(t.X2MaxRatePerS)
+	return p, nil
+}
+
+// pinCS — ТЗ-2025: 4 CS на P2.3..P2.7, одна линия лишняя, адрес A8..A10 (буфер ≤ 2 КБ).
+func (p *Params) pinCS(cs map[string]string, order []string) error {
 	used := map[int]string{}
-	for _, name := range []string{"Индикатор", "Клавиатура", "Буфер (IDT7005)", "Регистр Y2"} {
+	for _, name := range order {
 		pin, err := ParsePin(cs[name])
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return fmt.Errorf("%s: %w", name, err)
 		}
 		if pin.Port != 2 || pin.Bit < 3 {
-			return nil, fmt.Errorf("%s: CS %s — ожидается P2.3..P2.7 (P2.0..P2.2 заняты адресом A8..A10)", name, pin)
+			return fmt.Errorf("%s: CS %s — ожидается P2.3..P2.7 (P2.0..P2.2 заняты адресом A8..A10)", name, pin)
 		}
 		if other, dup := used[pin.Bit]; dup {
-			return nil, fmt.Errorf("CS %s занят и у «%s», и у «%s»", pin, other, name)
+			return fmt.Errorf("CS %s занят и у «%s», и у «%s»", pin, other, name)
 		}
 		used[pin.Bit] = name
 		// старший байт: F8h со сброшенным битом CS, младшие 3 бита — адрес A8..A10
@@ -309,11 +364,46 @@ func Compute(t *Table, s *Student) (*Params, error) {
 		}
 	}
 	if p.V > 2048 {
-		return nil, fmt.Errorf("V=%d > 2048: буфер не влезает в 11 адресных линий", p.V)
+		return fmt.Errorf("V=%d > 2048: буфер не влезает в 11 адресных линий", p.V)
 	}
+	return nil
+}
 
-	p.FillTimeS = float64(p.V) / float64(t.X2MaxRatePerS)
-	return p, nil
+// decoderCS — ТЗ-2026: CS = выход Yn дешифратора 74HC138 (A13..A15), окно 8 КБ с базой n·2000h,
+// обращение — только при CS_EN = 1.
+func (p *Params) decoderCS(cs map[string]string, order []string) error {
+	used := map[int]string{}
+	for _, name := range order {
+		v := cs[name]
+		if len(v) != 2 || v[0] != 'Y' || v[1] < '0' || v[1] > '7' {
+			return fmt.Errorf("%s: CS %q — ожидается выход дешифратора Y0..Y7", name, v)
+		}
+		n := int(v[1] - '0')
+		if other, dup := used[n]; dup {
+			return fmt.Errorf("выход %s занят и у «%s», и у «%s»", v, other, name)
+		}
+		used[n] = name
+		p.Devices = append(p.Devices, Device{Name: name, CS: v, Base: n << 13, WinSize: 8192})
+	}
+	var free []string
+	for n := 0; n <= 7; n++ {
+		if _, ok := used[n]; !ok {
+			free = append(free, fmt.Sprintf("Y%d", n))
+		}
+	}
+	p.UnusedCS = strings.Join(free, ", ")
+	if p.V > 8192 {
+		return fmt.Errorf("V=%d > 8192: буфер больше IDT7005", p.V)
+	}
+	return nil
+}
+
+// Y2Sum — постоянная часть Y2: «14» (2025: M) или «12+14» (2026: G+M).
+func (p *Params) Y2Sum() string {
+	if p.G != 0 {
+		return fmt.Sprintf("%d+%d", p.G, p.M)
+	}
+	return fmt.Sprint(p.M)
 }
 
 // pickTick выбирает самый крупный тик (мс), на который делятся T1 и T3

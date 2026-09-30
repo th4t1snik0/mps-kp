@@ -1,0 +1,153 @@
+# Таблица 1 из ТЗ «МПС ч.2», 2026 год (docs/source/ТЗ-2026.pdf, с. 3; разбор — docs/research/tz-2026.md).
+# CS — номер выхода дешифратора 74HC138 (Yn): A0/A1/A2 ← A13/A14/A15, E2 ← CS_EN (P3.4), базовый адрес = n·2000h.
+# Где CS зависит от чётности M — {even: …, odd: …} («для четных / нечет. M» в ТЗ).
+# Формулы «X + 10M» — {base: X, per_m: 10}; T3 «2.10+M/20 с» — {base: 2100, per_m: 50} мс.
+# Таймеры и прерывания в 2026 общие: T1, T3 — таймер 0, T2 — таймер 1; клавиатура — INT0, X2 — INT1.
+# Флаги: пустота — бит M, переполнение — бит M+G (G — номер группы).
+
+year: 2026
+crystal_mhz: 12
+x2_max_rate_per_s: 4        # «до 4 отсчетов в секунду»
+cs_mode: decoder
+cs_en_pin: P3.4
+
+groups:
+  А-06:
+    g: 6
+    t1_ms:     {base: 166, per_m: 10}
+    cs_buf:    Y1
+    v_bytes:   {base: 1200, per_m: 10}
+    head_addr: 0x38
+    tail_addr: 0x3A
+    empty_bit: {base: 0, per_m: 1}
+    ovf_bit:   {base: 6, per_m: 1}
+    cs_y2:     {even: Y2, odd: Y3}
+    t2_us:     {base: 1506, per_m: 30}
+    cs_ind:    {even: Y3, odd: Y2}
+    t3_ms:     {base: 2100, per_m: 50}
+    indicator: cathode
+    cs_kb:     Y4
+    kb_int:    INT0
+    y1_timer:  0
+    y2_timer:  1
+    t3_timer:  0
+
+  А-07:
+    g: 7
+    t1_ms:     {base: 172, per_m: 10}
+    cs_buf:    Y2
+    v_bytes:   {base: 1304, per_m: 10}
+    head_addr: 0x3C
+    tail_addr: 0x3E
+    empty_bit: {base: 0, per_m: 1}
+    ovf_bit:   {base: 7, per_m: 1}
+    cs_y2:     {even: Y3, odd: Y4}
+    t2_us:     {base: 1607, per_m: 30}
+    cs_ind:    {even: Y4, odd: Y3}
+    t3_ms:     {base: 2160, per_m: 50}
+    indicator: cathode
+    cs_kb:     Y5
+    kb_int:    INT0
+    y1_timer:  0
+    y2_timer:  1
+    t3_timer:  0
+
+  А-08:
+    g: 8
+    t1_ms:     {base: 178, per_m: 10}
+    cs_buf:    Y3
+    v_bytes:   {base: 1408, per_m: 10}
+    head_addr: 0x40
+    tail_addr: 0x42
+    empty_bit: {base: 0, per_m: 1}
+    ovf_bit:   {base: 8, per_m: 1}
+    cs_y2:     {even: Y4, odd: Y5}
+    t2_us:     {base: 1708, per_m: 30}
+    cs_ind:    {even: Y5, odd: Y4}
+    t3_ms:     {base: 2220, per_m: 50}
+    indicator: anode
+    cs_kb:     Y6
+    kb_int:    INT0
+    y1_timer:  0
+    y2_timer:  1
+    t3_timer:  0
+
+  А-09:
+    g: 9
+    t1_ms:     {base: 185, per_m: 10}
+    cs_buf:    Y4
+    v_bytes:   {base: 1500, per_m: 10}
+    head_addr: 0x44
+    tail_addr: 0x46
+    empty_bit: {base: 0, per_m: 1}
+    ovf_bit:   {base: 9, per_m: 1}
+    cs_y2:     {even: Y5, odd: Y6}
+    t2_us:     {base: 1809, per_m: 30}
+    cs_ind:    {even: Y6, odd: Y5}
+    t3_ms:     {base: 2280, per_m: 50}
+    indicator: anode
+    cs_kb:     Y7
+    kb_int:    INT0
+    y1_timer:  0
+    y2_timer:  1
+    t3_timer:  0
+
+  А-12:
+    g: 12
+    t1_ms:     {base: 191, per_m: 10}
+    cs_buf:    Y5
+    v_bytes:   {base: 1604, per_m: 10}
+    head_addr: 0x47
+    tail_addr: 0x49
+    empty_bit: {base: 0, per_m: 1}
+    ovf_bit:   {base: 12, per_m: 1}
+    cs_y2:     {even: Y6, odd: Y7}
+    t2_us:     {base: 1912, per_m: 30}
+    cs_ind:    {even: Y7, odd: Y6}
+    t3_ms:     {base: 2340, per_m: 50}
+    indicator: anode
+    cs_kb:     Y1
+    kb_int:    INT0
+    y1_timer:  0
+    y2_timer:  1
+    t3_timer:  0
+
+  А-17:
+    g: 17
+    t1_ms:     {base: 197, per_m: 10}
+    cs_buf:    Y6
+    v_bytes:   {base: 1708, per_m: 10}
+    head_addr: 0x4B
+    tail_addr: 0x4D
+    empty_bit: {base: 0, per_m: 1}
+    ovf_bit:   {base: 17, per_m: 1}
+    cs_y2:     {even: Y7, odd: Y1}
+    t2_us:     {base: 2017, per_m: 30}
+    cs_ind:    {even: Y1, odd: Y7}
+    t3_ms:     {base: 2135, per_m: 50}
+    indicator: cathode
+    cs_kb:     Y2
+    kb_int:    INT0
+    y1_timer:  0
+    y2_timer:  1
+    t3_timer:  0
+
+  Аэ-21:
+    g: 21
+    t1_ms:     {base: 203, per_m: 10}
+    cs_buf:    Y7
+    v_bytes:   {base: 1800, per_m: 10}
+    head_addr: 0x51
+    tail_addr: 0x53
+    empty_bit: {base: 0, per_m: 1}
+    ovf_bit:   {base: 21, per_m: 1}
+    cs_y2:     {even: Y1, odd: Y2}
+    t2_us:     {base: 1421, per_m: 30}
+    cs_ind:    {even: Y2, odd: Y1}
+    t3_ms:     {base: 2195, per_m: 50}
+    indicator: cathode
+    cs_kb:     Y3
+    kb_int:    INT0
+    y1_timer:  0
+    y2_timer:  1
+    t3_timer:  0

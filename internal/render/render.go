@@ -55,7 +55,13 @@ func Markdown(p *variant.Params) string {
 	for _, d := range p.Devices {
 		w("| CS: %s | %s |", d.Name, d.CS)
 	}
-	w("| Свободная линия CS | %s (держим в 1) |", p.UnusedCS)
+	if p.CSMode == "decoder" {
+		w("| CS_EN (разрешение дешифратора 74HC138, E2) | %s — перед обращением к внешним устройствам = 1 |", p.CSEnPin)
+		w("| Адрес устройств | P2.5–P2.7 = A13–A15 → A0–A2 дешифратора; P2.0–P2.4 = A8–A12 |")
+		w("| Свободные выходы дешифратора | %s |", p.UnusedCS)
+	} else {
+		w("| Свободная линия CS | %s (держим в 1) |", p.UnusedCS)
+	}
 	w("")
 	w("## Карта внешней памяти (movx)")
 	w("")
@@ -95,8 +101,12 @@ func Markdown(p *variant.Params) string {
 	w("")
 	w("## Ответы на п. 2.3 ТЗ")
 	w("")
-	w("- Минимальное время заполнения буфера при X1 = 0: V / 5 = %d / 5 = %.0f с.", p.V, p.FillTimeS)
-	w("- Функция: X1 ≠ 0 → Y2 = (%d + X1 + X2) mod 256; X1 = 0 → Y2 = 0.", p.M)
+	w("- Минимальное время заполнения буфера при X1 = 0: V / %d = %d / %d = %.0f с.", p.X2Rate, p.V, p.X2Rate, p.FillTimeS)
+	if p.G != 0 {
+		w("- Функция: X1 ≠ 0 → Y2 = (G + M + X1 + X2) mod 256 = (%d + %d + X1 + X2) mod 256 = (%d + X1 + X2) mod 256; X1 = 0 → Y2 = 0.", p.G, p.M, p.G+p.M)
+	} else {
+		w("- Функция: X1 ≠ 0 → Y2 = (%d + X1 + X2) mod 256; X1 = 0 → Y2 = 0.", p.M)
+	}
 	return b.String()
 }
 
@@ -106,7 +116,13 @@ func Asm(p *variant.Params) string {
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f+"\n", a...) }
 	w("; Параметры варианта %s, M=%d (ТЗ %d). Сгенерировано mpsgen — не править руками.", p.Group, p.M, p.Year)
 	w("")
-	w("VAR_M        EQU %d            ; номер варианта (для Y2 = M+X1+X2)", p.M)
+	if p.G != 0 {
+		w("VAR_M        EQU %d            ; номер варианта", p.M)
+		w("VAR_G        EQU %d            ; номер группы", p.G)
+		w("Y2_CONST     EQU %d            ; G+M: Y2 = (Y2_CONST + X1 + X2) mod 256", p.G+p.M)
+	} else {
+		w("VAR_M        EQU %d            ; номер варианта (для Y2 = M+X1+X2)", p.M)
+	}
 	w("")
 	w("; --- адреса внешних устройств (movx) ---")
 	w("ADR_IND      EQU %s        ; индикатор, CS %s", H(p.Dev("Индикатор").Base), p.Dev("Индикатор").CS)
@@ -128,6 +144,9 @@ func Asm(p *variant.Params) string {
 	w("; --- выводы ---")
 	w("PIN_Y1       BIT %s         ; строб Y1, активный 0", p.Y1Pin)
 	w("PIN_Y2       BIT %s         ; строб Y2, активный 0", p.Y2Pin)
+	if p.CSEnPin != "" {
+		w("PIN_CSEN     BIT %s         ; CS_EN: разрешение дешифратора CS (1 — CS активны)", p.CSEnPin)
+	}
 	w("")
 	w("; --- таймеры (кварц %d МГц) ---", p.CrystalMHz)
 	w("T2_RELOAD_H  EQU %s          ; строб Y2 %d мкс, Timer%d", H(p.T2Reload>>8), p.T2us, p.Y2Timer)
