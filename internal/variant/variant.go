@@ -84,8 +84,9 @@ type Table struct {
 	Year          int                 `yaml:"year"`
 	CrystalMHz    int                 `yaml:"crystal_mhz"`
 	X2MaxRatePerS int                 `yaml:"x2_max_rate_per_s"`
-	CSMode        string              `yaml:"cs_mode"`   // pins (2025: CS — линии P2.x) | decoder (2026: выходы 74HC138)
-	CSEnPin       string              `yaml:"cs_en_pin"` // decoder: вывод МК, разрешающий дешифратор (P3.4)
+	CSMode        string              `yaml:"cs_mode"`    // pins (2025: CS — линии P2.x) | decoder (2026: выходы 74HC138)
+	CSEnPin       string              `yaml:"cs_en_pin"`  // decoder: вывод МК, разрешающий дешифратор (P3.4)
+	FilterCap     string              `yaml:"filter_cap"` // керамика на каждый корпус (ТЗ п. 2.1(10)): «68 н», «33 н»
 	Groups        map[string]GroupRow `yaml:"groups"`
 }
 
@@ -106,6 +107,9 @@ func LoadTable(path string) (*Table, error) {
 	}
 	if t.CSMode == "" {
 		t.CSMode = "pins"
+	}
+	if t.FilterCap == "" {
+		t.FilterCap = "68 н"
 	}
 	return &t, nil
 }
@@ -207,10 +211,11 @@ type Params struct {
 	Student string `json:"student"`
 	Checker string `json:"checker"`
 
-	G       int    `json:"g"`       // номер группы (0 — нет в таблице)
-	CSMode  string `json:"cs_mode"` // pins | decoder
-	CSEnPin string `json:"cs_en_pin"`
-	X2Rate  int    `json:"x2_rate"`
+	G         int    `json:"g"`       // номер группы (0 — нет в таблице)
+	CSMode    string `json:"cs_mode"` // pins | decoder
+	CSEnPin   string `json:"cs_en_pin"`
+	X2Rate    int    `json:"x2_rate"`
+	FilterCap string `json:"filter_cap"`
 
 	Keyboard  string `json:"keyboard"` // "4x3" | "3x4" (столбцы × строки)
 	Cols      int    `json:"cols"`
@@ -259,7 +264,7 @@ func Compute(t *Table, s *Student) (*Params, error) {
 	}
 	m := s.M
 	p := &Params{Year: t.Year, Group: s.Group, M: m, K: m % 7, Student: s.Name, Checker: s.Checker, CrystalMHz: t.CrystalMHz,
-		G: g.G, CSMode: t.CSMode, CSEnPin: t.CSEnPin, X2Rate: t.X2MaxRatePerS}
+		G: g.G, CSMode: t.CSMode, CSEnPin: t.CSEnPin, X2Rate: t.X2MaxRatePerS, FilterCap: t.FilterCap}
 
 	if p.K+1 > 7 {
 		return nil, fmt.Errorf("k+1 > 7")

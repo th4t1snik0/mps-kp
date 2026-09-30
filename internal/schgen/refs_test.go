@@ -37,8 +37,12 @@ func TestRefs(t *testing.T) {
 				}
 			}
 		}
-		if len(pkgs["DD"]) != 10 {
-			t.Errorf("корпусов DD %d, ждём 10", len(pkgs["DD"]))
+		want := 10
+		if v.Decoder {
+			want = 11
+		}
+		if len(pkgs["DD"]) != want {
+			t.Errorf("корпусов DD %d, ждём %d", len(pkgs["DD"]), want)
 		}
 	}
 }

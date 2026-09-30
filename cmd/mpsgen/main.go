@@ -23,17 +23,17 @@ import (
 
 func main() {
 	var (
-		table = flag.String("table", "data/table-2025.yaml", "таблица вариантов из ТЗ")
-		stud  = flag.String("student", "", "students/<ник>/variant.yaml")
-		group = flag.String("group", "", "группа (вместо -student)")
-		m     = flag.Int("m", 0, "номер варианта (вместо -student)")
+		table  = flag.String("table", "data/table-2026.yaml", "таблица вариантов из ТЗ")
+		stud   = flag.String("student", "", "students/<ник>/variant.yaml")
+		group  = flag.String("group", "", "группа (вместо -student)")
+		m      = flag.Int("m", 0, "номер варианта (вместо -student)")
 		out    = flag.String("out", "", "папка для результатов (по умолчанию <outroot>/<группа>/<вариант>)")
 		root   = flag.String("outroot", "build", "корень для результатов")
 		name   = flag.String("name", "", "Фамилия И.О. в рамку (вместо name в variant.yaml)")
 		year   = flag.String("year", "23", "год набора группы: А-12 → А-12-<year>")
 		doRend = flag.Bool("render", false, "после генерации запустить scripts/render.sh (PDF, PNG, ERC)")
-		lib   = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
-		wks   = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
+		lib    = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
+		wks    = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
 	)
 	flag.Parse()
 	dir, err := run(*table, *stud, *group, *m, *name, *year, *root, *out, *lib, *wks)
@@ -109,6 +109,7 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 			Kb: p.Dev("Клавиатура").CS, Ind: p.Dev("Индикатор").CS,
 		},
 		Y1: p.Y1Pin, Y2: p.Y2Pin, KbInt: p.KbInt, X2Int: p.X2Int,
+		Decoder: p.CSMode == "decoder", CSEn: p.CSEnPin, Filter: p.FilterCap,
 		Date: st.Date, Student: st.Name, Checker: st.Checker,
 	}
 	sh := schgen.Build(lib, v, fmt.Sprintf("%s-%d", p.Group, p.M))

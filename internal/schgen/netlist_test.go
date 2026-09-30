@@ -21,6 +21,12 @@ var variants = []Variant{
 	{Cols: 3, Rows: 4, CS: CSPins{Buf: "P2.4", Y2: "P2.3", Kb: "P2.5", Ind: "P2.7"}, Y1: "P1.0", Y2: "P1.1", KbInt: "INT1", X2Int: "INT0"},
 	// общий анод, стробы на краю P1
 	{Cols: 4, Rows: 3, Anode: true, CS: CSPins{Buf: "P2.3", Y2: "P2.7", Kb: "P2.4", Ind: "P2.5"}, Y1: "P1.6", Y2: "P1.7", KbInt: "INT0", X2Int: "INT1"},
+	// ТЗ-2026: А-12 M=14 — CS с дешифратора, общий анод
+	{Cols: 4, Rows: 3, Anode: true, Decoder: true, CSEn: "P3.4", Filter: "33 н",
+		CS: CSPins{Buf: "Y5", Y2: "Y6", Kb: "Y1", Ind: "Y7"}, Y1: "P1.0", Y2: "P1.1", KbInt: "INT0", X2Int: "INT1"},
+	// ТЗ-2026: А-17 M=21 — 3×4, Y2/индикатор на Y1/Y7
+	{Cols: 3, Rows: 4, Decoder: true, CSEn: "P3.4", Filter: "33 н",
+		CS: CSPins{Buf: "Y6", Y2: "Y1", Kb: "Y2", Ind: "Y7"}, Y1: "P1.0", Y2: "P1.1", KbInt: "INT0", X2Int: "INT1"},
 }
 
 func TestNetlist(t *testing.T) {
@@ -126,6 +132,17 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 	for i := 8; i <= 10; i++ {
 		e[fmt.Sprintf("A%d", i)] = []string{r("mcu", 13+i), r("idt", 44+i), r("idt", 37-i)}
 	}
+	if v.Decoder {
+		// ТЗ-2026: P2 целиком — адрес; A11, A12 — на оба порта IDT; A13..A15 — на дешифратор
+		e["A11"] = []string{r("mcu", 24), r("idt", 55), r("idt", 26)}
+		e["A12"] = []string{r("mcu", 25), r("idt", 56), r("idt", 25)}
+		for i := 13; i <= 15; i++ {
+			e[fmt.Sprintf("A%d", i)] = []string{r("mcu", 13+i), r("dec", i-12)}
+		}
+		e["CS_EN"] = []string{mp(v.CSEn), r("dec", 6)}
+		yPin := []string{"15", "14", "13", "12", "11", "10", "9", "7"}
+		mp = func(y string) string { return r("dec", yPin[y[1]-'0']) }
+	}
 	e["CSbuf"] = []string{mp(v.CS.Buf), r("idt", 59), r("idt", 22)}
 	e["CSy2"] = []string{mp(v.CS.Y2), r("norY2", 2)}
 	e["CSkb"] = []string{mp(v.CS.Kb), r("kb173", 9), r("kb173", 10), r("or", 1)}
@@ -133,8 +150,8 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 	e["WR"] = []string{r("mcu", 16), r("norY2", 3), r("norInd", 6), r("kb173", 7), r("idt", 20)}
 	e["RD"] = []string{r("mcu", 17), r("idt", 62), r("or", 2)}
 	e["ALE"] = []string{r("mcu", 30), r("latchA", 11)}
-	e["Y1"] = []string{mp(v.Y1), r("xsY", 1)}
-	e["Y2"] = []string{mp(v.Y2), r("xsY", 2)}
+	e["Y1"] = []string{r("mcu", mcuPin(v.Y1)), r("xsY", 1)}
+	e["Y2"] = []string{r("mcu", mcuPin(v.Y2)), r("xsY", 2)}
 	intPin := map[string]string{"INT0": "12", "INT1": "13"}
 	andOut := "12"
 	andIn := []string{"1", "2", "13"}

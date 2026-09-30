@@ -10,6 +10,7 @@ crystal_mhz: 12
 x2_max_rate_per_s: 4        # «до 4 отсчетов в секунду»
 cs_mode: decoder
 cs_en_pin: P3.4
+filter_cap: 33 н            # «керамический конденсатор 33 нФ на каждый корпус» (п. 2.1(10))
 
 groups:
   А-06:

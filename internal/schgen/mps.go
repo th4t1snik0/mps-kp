@@ -15,6 +15,9 @@ type Variant struct {
 	Y1, Y2     string // P1.x стробов
 	KbInt      string // INT0 | INT1 — вход МК для IRQ клавиатуры
 	X2Int      string // второй INT — строб X2
+	Decoder    bool   // ТЗ-2026: CS — выходы 74HC138 (A13..A15, E2 = CS_EN); CS.* = "Y0".."Y7"
+	CSEn       string // вывод МК CS_EN (P3.4)
+	Filter     string // номинал фильтров на корпус: «68 н» (2025) / «33 н» (2026)
 	Date       string
 	Student    string
 	Checker    string
@@ -22,17 +25,28 @@ type Variant struct {
 
 type CSPins struct{ Buf, Y2, Kb, Ind string }
 
-// Имена цепей (как в принятой схеме).
-const (
+// Имена цепей CS: как в принятой схеме 2025; в режиме дешифратора — как на рис. 6 ТЗ-2026.
+var (
 	nCSbuf = "~{CSbuf}"
 	nCSy2  = "~{CSy2}"
 	nCSkb  = "~{CSkb}"
 	nCSind = "~{CSind}"
-	nWR    = "~{WR}"
-	nRD    = "~{RD}"
-	nALE   = "ALE"
-	nY1    = "~{Y1stb}"
-	nY2    = "~{Y2stb}"
+)
+
+func setCSNames(decoder bool) {
+	if decoder {
+		nCSbuf, nCSy2, nCSkb, nCSind = "~{CS_buf}", "~{CS_rgo}", "~{CS_kbd}", "~{CS_ind}"
+	} else {
+		nCSbuf, nCSy2, nCSkb, nCSind = "~{CSbuf}", "~{CSy2}", "~{CSkb}", "~{CSind}"
+	}
+}
+
+const (
+	nWR  = "~{WR}"
+	nRD  = "~{RD}"
+	nALE = "ALE"
+	nY1  = "~{Y1stb}"
+	nY2  = "~{Y2stb}"
 )
 
 // Координаты шин (мм, сетка 1,27).
@@ -119,6 +133,11 @@ func icLabels(vccTip Pt) SymOpt {
 func Build(lib *Lib, v Variant, seed string) *Sheet {
 	b := &builder{Sheet: NewSheet(lib, seed), v: v, refs: map[string]int{}}
 	b.Roles = map[string]*Comp{}
+	setCSNames(v.Decoder)
+	if v.Filter == "" {
+		v.Filter = "68 н"
+		b.v.Filter = v.Filter
+	}
 	b.Title = TitleBlock{Date: v.Date, Comments: map[int]string{2: v.Student, 3: v.Checker}}
 	b.connectors()
 	b.mcu()
@@ -129,6 +148,9 @@ func Build(lib *Lib, v Variant, seed string) *Sheet {
 	b.keyboard()
 	b.rowsAndInt()
 	b.indicator()
+	if v.Decoder {
+		b.decoder()
+	}
 	b.buses()
 	b.Renumber()
 	b.notes()
@@ -149,6 +171,9 @@ func (b *builder) mcu() {
 		mcuPin(b.v.Y1): nY1, mcuPin(b.v.Y2): nY2,
 		"12": "~{INT0}", "13": "~{INT1}", "16": nWR, "17": nRD,
 	}
+	if b.v.Decoder {
+		left[mcuPin(b.v.CSEn)] = "CS_EN"
+	}
 	for _, n := range []string{"1", "2", "3", "4", "5", "6", "7", "8", "10", "11", "12", "13", "14", "15", "16", "17"} {
 		if name, ok := left[n]; ok {
 			b.tapLeft(u.Pin(n), xBL, name)
@@ -159,6 +184,16 @@ func (b *builder) mcu() {
 	// правая сторона: AD0..7, A8..10, CS, ALE
 	for i := 0; i < 8; i++ {
 		b.tapRight(u.Pin(strconv.Itoa(39-i)), xBM, fmt.Sprintf("AD%d", i))
+	}
+	if b.v.Decoder {
+		// ТЗ-2026: весь P2 — старший байт адреса A8..A15 (A13..A15 — на дешифратор CS)
+		for i := 0; i < 8; i++ {
+			b.tapRight(u.Pin(strconv.Itoa(21+i)), xBM, fmt.Sprintf("A%d", 8+i))
+		}
+		b.nc(u.Pin("29")) // PSEN: ПЗУ нет
+		b.tapRight(u.Pin("30"), xBM, nALE)
+		b.reset(u)
+		return
 	}
 	for i := 0; i < 3; i++ {
 		b.tapRight(u.Pin(strconv.Itoa(21+i)), xBM, fmt.Sprintf("A%d", 8+i))
@@ -176,7 +211,11 @@ func (b *builder) mcu() {
 	}
 	b.nc(u.Pin("29")) // PSEN: ПЗУ нет
 	b.tapRight(u.Pin("30"), xBM, nALE)
+	b.reset(u)
+}
 
+// reset — сброс, кварц, EA.
+func (b *builder) reset(u *Comp) {
 	// сброс: C от +5 В на RST, R с RST на GND (τ = 100 мс)
 	rst := u.Pin("9")
 	node := Pt{40.64, rst.Y}
@@ -309,11 +348,17 @@ func (b *builder) idt() {
 	b.Wire(ms, Pt{xl, ms.Y})
 	b.Power("GND", Pt{xl, ms.Y}, 270)
 	b.nc(u.Pin("43"))
-	// A11L, A12L → GND (буфер ≤ 2 КБ)
-	b.Wire(u.Pin("55"), Pt{xl, u.Pin("55").Y})
-	b.Wire(u.Pin("56"), Pt{xl, u.Pin("56").Y}, Pt{xl, u.Pin("55").Y})
-	b.Wire(Pt{xl, u.Pin("56").Y}, Pt{xl, u.Pin("56").Y + 1.27})
-	b.gnd(Pt{xl, u.Pin("56").Y + 1.27})
+	if b.v.Decoder {
+		// ТЗ-2026: окно 8 КБ, буфер до 2100 байт — нужны A11, A12
+		b.tapLeft(u.Pin("55"), xBI, "A11")
+		b.tapLeft(u.Pin("56"), xBI, "A12")
+	} else {
+		// A11L, A12L → GND (буфер ≤ 2 КБ)
+		b.Wire(u.Pin("55"), Pt{xl, u.Pin("55").Y})
+		b.Wire(u.Pin("56"), Pt{xl, u.Pin("56").Y}, Pt{xl, u.Pin("55").Y})
+		b.Wire(Pt{xl, u.Pin("56").Y}, Pt{xl, u.Pin("56").Y + 1.27})
+		b.gnd(Pt{xl, u.Pin("56").Y + 1.27})
+	}
 
 	// правый порт — внешнее устройство (X2), запись стробом WR МК
 	xr := 215.9
@@ -329,10 +374,15 @@ func (b *builder) idt() {
 	for i := 0; i <= 10; i++ {
 		b.tapRight(u.Pin(strconv.Itoa(37-i)), xBR, fmt.Sprintf("A%d", i))
 	}
-	b.Wire(u.Pin("26"), Pt{xr, u.Pin("26").Y})
-	b.Wire(u.Pin("25"), Pt{xr, u.Pin("25").Y}, Pt{xr, u.Pin("26").Y})
-	b.Wire(Pt{xr, u.Pin("25").Y}, Pt{xr, u.Pin("25").Y + 1.27})
-	b.gnd(Pt{xr, u.Pin("25").Y + 1.27})
+	if b.v.Decoder {
+		b.tapRight(u.Pin("26"), xBR, "A11")
+		b.tapRight(u.Pin("25"), xBR, "A12")
+	} else {
+		b.Wire(u.Pin("26"), Pt{xr, u.Pin("26").Y})
+		b.Wire(u.Pin("25"), Pt{xr, u.Pin("25").Y}, Pt{xr, u.Pin("26").Y})
+		b.Wire(Pt{xr, u.Pin("25").Y}, Pt{xr, u.Pin("25").Y + 1.27})
+		b.gnd(Pt{xr, u.Pin("25").Y + 1.27})
+	}
 	dr := []string{"10", "11", "12", "14", "15", "16", "17", "18"}
 	for i, n := range dr {
 		b.tapRight(u.Pin(n), xBR, fmt.Sprintf("X2_%d", i))
@@ -663,10 +713,13 @@ func (b *builder) power() {
 	b.Wire(Pt{x, yg}, Pt{x, yg + 1.27})
 	b.gnd(Pt{x, yg + 1.27})
 	xs := x + 13.97
-	n := 10 // DD1..DD10
+	n := 10 // по конденсатору на корпус DD
+	if b.v.Decoder {
+		n = 11 // + дешифратор
+	}
 	for i := 0; i < n; i++ {
 		cx := xs + float64(i)*8.89
-		c := b.Sym("C", b.next("C"), "68 н", Pt{cx, (yv + yg) / 2}, SymOpt{
+		c := b.Sym("C", b.next("C"), b.v.Filter, Pt{cx, (yv + yg) / 2}, SymOpt{
 			RefAt: ptr(Pt{cx + 2.54, yv + 3.81}), ValAt: ptr(Pt{cx + 2.54, yv + 6.35}), RefJust: "left", ValJust: "left"})
 		b.filterCs = append(b.filterCs, c)
 		b.Wire(Pt{cx, yv}, c.Pin("1"))
@@ -692,7 +745,7 @@ func (b *builder) notes() {
 	nor, and, or := b.Roles["norY2"].Ref, b.Roles["and"].Ref, b.Roles["or"].Ref
 	lines := []string{
 		"Примечание",
-		fmt.Sprintf("1. %s подключить в непосредственной близости от выводов питания микросхем DD1–DD10.", refRanges(b.filterCs)),
+		fmt.Sprintf("1. %s подключить в непосредственной близости от выводов питания микросхем DD1–DD%d.", refRanges(b.filterCs), len(b.filterCs)),
 		fmt.Sprintf("2. %s — вывод 7 на GND, вывод 14 к +5 В.", joinRefs(nor, and, or)),
 		fmt.Sprintf("3. Неиспользуемые входы к GND: %s выв. 8, 9, 11, 12; %s выв. %s; %s выв. 4, 5, 9, 10, 12, 13.", nor, and, andUnused, or),
 		fmt.Sprintf("4. %s, %s устанавливать рядом с ZQ1.", b.Roles["cX1"].Ref, b.Roles["cX2"].Ref),
@@ -732,6 +785,44 @@ func refRanges(cs []*Comp) string {
 		i = j + 1
 	}
 	return strings.Join(parts, ", ")
+}
+
+// ---------------------------------------------------------------- дешифратор CS (ТЗ-2026, рис. 6)
+
+func (b *builder) decoder() {
+	at := Pt{330.2, 66.04}
+	u := b.role("dec", b.Sym("74HC138", "DD11", "74HC138", at, icLabels(Pt{at.X, at.Y - 15.24})))
+	b.vcc(u.Pin("16"))
+	b.gnd(u.Pin("8"))
+	// адрес A13..A15 → A0..A2
+	for i, n := range []string{"1", "2", "3"} {
+		p := u.Pin(n)
+		e := Pt{p.X - 12.7, p.Y}
+		b.Wire(e, p)
+		b.Label(fmt.Sprintf("A%d", 13+i), e, false)
+	}
+	// Ē0, Ē1 → GND; E2 ← CS_EN
+	e0, e1 := u.Pin("4"), u.Pin("5")
+	xg := e0.X - 2.54
+	b.Wire(e0, Pt{xg, e0.Y}, Pt{xg, e1.Y}, e1)
+	b.Power("GND", Pt{xg, e0.Y}, 270)
+	e2 := u.Pin("6")
+	b.Wire(Pt{e2.X - 12.7, e2.Y}, e2)
+	b.Label("CS_EN", Pt{e2.X - 12.7, e2.Y}, false)
+	// выходы Yn → CS по варианту
+	yPin := []string{"15", "14", "13", "12", "11", "10", "9", "7"}
+	cs := map[string]string{b.v.CS.Buf: nCSbuf, b.v.CS.Y2: nCSy2, b.v.CS.Ind: nCSind, b.v.CS.Kb: nCSkb}
+	for n := 0; n < 8; n++ {
+		p := u.Pin(yPin[n])
+		name, ok := cs[fmt.Sprintf("Y%d", n)]
+		if !ok {
+			b.nc(p)
+			continue
+		}
+		e := Pt{p.X + 12.7, p.Y}
+		b.Wire(p, e)
+		b.Label(name, e, true)
+	}
 }
 
 // ---------------------------------------------------------------- шины

@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       group:
-        description: "Группа, как в data/table-2025.yaml (А-07, А-08, А-12, А-17, Аэ-21)"
+        description: "Группа по ТЗ-2026 (А-06, А-07, А-08, А-09, А-12, А-17, Аэ-21)"
         required: false
         default: ""
       m:

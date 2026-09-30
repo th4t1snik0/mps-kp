@@ -2,7 +2,7 @@
 # make student S=<ник>                      — из students/<ник>/variant.yaml → build/<группа>/<вариант>/
 # make test
 # Y — год набора группы (А-12 → А-12-$(Y)).
-TABLE ?= data/table-2025.yaml
+TABLE ?= data/table-2026.yaml
 Y     ?= 23
 FIO   ?=
 
