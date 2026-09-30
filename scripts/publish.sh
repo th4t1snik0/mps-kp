@@ -71,15 +71,19 @@ for attempt in 1 2 3; do
     echo
     echo "Каждый запуск кладёт вариант в новую папку \`прогон-N\` — прошлые не перетираются. В таблице — последние."
     echo
-    echo "| Группа | Вариант | Прогонов | Схема (последняя) | Перечень | Параметры | ERC | Код КМ-3 (последний) |"
-    echo "| --- | --- | --- | --- | --- | --- | --- | --- |"
+    echo "| Группа | Вариант | Прогонов | КМ-1: схема (последняя) | Перечень | Параметры | ERC | КМ-2: ПЗ1 | КМ-3: код | КМ-3: ПЗ2 |"
+    echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     (cd "$work/r" && find . -mindepth 3 -maxdepth 3 -type d -name 'прогон-*' | sed 's|^\./||; s|/прогон-[0-9]*$||' |
       sort -u | sort -t/ -k1,1 -k2,2n) | while read -r n; do
       runs="$(ls -d "$work/r/$n"/прогон-* | sed 's|.*/прогон-||' | sort -n)"
-      sch="—" pe="—" par="—" e="—" code="—" s="" c=""
+      sch="—" pe="—" par="—" e="—" code="—" s="" c="" pz1="—" pz2="—"
       for k in $runs; do
         [ -f "$work/r/$n/прогон-$k/params.md" ] && s="$k"
         [ -f "$work/r/$n/прогон-$k/code/report.md" ] && c="$k"
+        f1="$(ls "$work/r/$n/прогон-$k/pz1/"*.docx 2>/dev/null | head -1)"
+        [ -n "$f1" ] && pz1="[прогон $k]($n/прогон-$k/pz1/$(basename "$f1" | sed 's/ /%20/g'))"
+        f2="$(ls "$work/r/$n/прогон-$k/pz2/"*.docx 2>/dev/null | head -1)"
+        [ -n "$f2" ] && pz2="[прогон $k]($n/прогон-$k/pz2/$(basename "$f2" | sed 's/ /%20/g'))"
       done
       if [ -n "$s" ]; then
         p="$n/прогон-$s"
@@ -91,7 +95,7 @@ for attempt in 1 2 3; do
       if [ -n "$c" ]; then
         code="[прогон $c: отчёт]($n/прогон-$c/code/report.md)"; grep -q "^## ❌" "$work/r/$n/прогон-$c/code/report.md" && code="❌ $code"
       fi
-      echo "| ${n%%/*} | ${n#*/} | [$(echo "$runs" | wc -l | tr -d ' ')]($n) | $sch | $pe | $par | $e | $code |"
+      echo "| ${n%%/*} | ${n#*/} | [$(echo "$runs" | wc -l | tr -d ' ')]($n) | $sch | $pe | $par | $e | $pz1 | $code | $pz2 |"
     done
   } > "$work/r/README.md"
 
