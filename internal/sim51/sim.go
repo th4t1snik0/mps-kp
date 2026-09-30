@@ -28,6 +28,7 @@ type Sim struct {
 	Trace func(cmd, out string)
 	// XTAL — частота кварца, Гц.
 	XTAL int
+	seq  int
 }
 
 // Binary — путь к s51 (переменная S51, иначе из PATH).
@@ -72,12 +73,10 @@ func Start(hexPath string, seed int) (*Sim, error) {
 		time.Sleep(30 * time.Millisecond)
 	}
 	s.r = bufio.NewReader(s.conn)
-	// согласование telnet и баннер — два приглашения
-	for i := 0; i < 2; i++ {
-		if _, err := s.read(); err != nil {
-			s.Close()
-			return nil, err
-		}
+	// согласование telnet и баннер — пропускаем до ответа на маркер
+	if _, err := s.sync(""); err != nil {
+		s.Close()
+		return nil, err
 	}
 	return s, nil
 }
@@ -99,8 +98,32 @@ func (s *Sim) Close() {
 	}
 }
 
+func (s *Sim) readUntil(sub string) (string, error) {
+	var buf []byte
+	s.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	for {
+		c, err := s.r.ReadByte()
+		if err != nil {
+			return string(buf), fmt.Errorf("s51: ждали %q: %w; получено: %q", sub, err, tail(string(buf)))
+		}
+		if c != 0 {
+			buf = append(buf, c)
+		}
+		if bytes.HasSuffix(buf, []byte(sub)) {
+			return string(buf), nil
+		}
+	}
+}
+
+func tail(s string) string {
+	if len(s) > 300 {
+		return "…" + s[len(s)-300:]
+	}
+	return s
+}
+
 func (s *Sim) read() (string, error) {
-	s.conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+	s.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	b, err := s.r.ReadBytes(0)
 	if err != nil {
 		return string(b), fmt.Errorf("s51: %w", err)
@@ -108,16 +131,36 @@ func (s *Sim) read() (string, error) {
 	return string(b[:len(b)-1]), nil
 }
 
-// Cmd выполняет команду консоли и возвращает вывод без эха.
+// sync — маркер «expr N»: читаем всё до его ответа. Так ответы не съезжают, даже если s51 печатает
+// приглашение («\0») не там, где ждём (на Linux «step» отвечает асинхронно: приглашение сразу, «Stop at» потом).
+func (s *Sim) sync(prefix string) (string, error) {
+	s.seq++
+	mark := fmt.Sprint(900000000 + s.seq)
+	if _, err := s.conn.Write([]byte("expr " + mark + "\n")); err != nil {
+		return prefix, err
+	}
+	out, err := s.readUntil("\n" + mark + "\r\n")
+	// эхо строк приходит раньше ответов, если команды пришли одним пакетом — вырезаем именно строки маркера
+	out = strings.Replace(prefix+out, "expr "+mark+"\r\n", "", 1)
+	out = strings.TrimSuffix(out, mark+"\r\n")
+	return out, err
+}
+
+// Cmd выполняет команду консоли и возвращает вывод (без эха и приглашений).
 func (s *Sim) Cmd(c string) (string, error) {
 	if _, err := s.conn.Write([]byte(c + "\n")); err != nil {
 		return "", err
 	}
-	out, err := s.read()
-	out = strings.ReplaceAll(out, "\r\n", "\n")
-	if i := strings.IndexByte(out, '\n'); i >= 0 && strings.TrimSpace(out[:i]) == c {
-		out = out[i+1:]
+	pre := ""
+	if strings.HasPrefix(c, "step") || strings.HasPrefix(c, "run") {
+		// дождаться конца прогона: «Stop at …» печатается всегда (и по брейкпоинту, и по времени)
+		var err error
+		if pre, err = s.readUntil("Stop at "); err != nil {
+			return pre, err
+		}
 	}
+	out, err := s.sync(pre)
+	out = strings.ReplaceAll(strings.Replace(out, c+"\r\n", "", 1), "\r\n", "\n")
 	if s.Trace != nil {
 		s.Trace(c, out)
 	}

@@ -51,6 +51,9 @@ jobs:
           "$(brew --prefix)/bin/s51" -v
 
       - name: MCU 8051 IDE (второй ассемблер для сверки)
+        id: mide
+        timeout-minutes: 6
+        continue-on-error: true   # сверка — страховка нашего ассемблера, а не проверка студента
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mcu8051ide
@@ -58,7 +61,7 @@ jobs:
       - name: Тесты ассемблера, симулятора и чекера (эталоны должны проходить, поломки — падать)
         env:
           MPS_REQUIRE_S51: "1"
-        run: go test ./internal/asm51/ ./internal/sim51/ ./internal/codecheck/
+        run: go test -timeout 8m ./internal/asm51/ ./internal/sim51/ ./internal/codecheck/
 
       - name: Сборка mpscode
         run: go build -o bin/mpscode ./cmd/mpscode
@@ -87,6 +90,7 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
       - name: Сверка asm51 с MCU 8051 IDE
+        if: steps.mide.outcome == 'success'
         run: scripts/mide_crosscheck.sh build build-ref
 
       - name: Результаты → ветка results
