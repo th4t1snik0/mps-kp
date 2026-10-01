@@ -175,7 +175,8 @@ func lintAsm(r *Report, res *asm51.Result) *marks {
 	// доля строк с комментарием (ТЗ п. 5: по смыслу — проверить может только человек)
 	code, commented := 0, 0
 	for _, l := range res.Lines {
-		if l.Included || l.Mnemonic == "" {
+		// таблица векторов из заготовки (sjmp START, заглушки nop/reti, вызов %proc%) — не студента: не считаем
+		if l.Included || l.Mnemonic == "" || l.Addr < 0x2B {
 			continue
 		}
 		code++

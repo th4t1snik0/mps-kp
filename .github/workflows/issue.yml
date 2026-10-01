@@ -12,8 +12,10 @@ on:
   issue_comment:
     types: [created]
 
+# свой запуск на каждый комментарий: общая группа на Issue держала бы в очереди только один ожидающий — команды подряд терялись бы.
+# Одновременные коммиты бота разруливает pull --rebase с повтором (шаг «Коммит файлов студента»).
 concurrency:
-  group: issue-${{ github.event.issue.number }}
+  group: issue-${{ github.event.issue.number }}-${{ github.event.comment.id || github.run_id }}
   cancel-in-progress: false
 
 permissions:
@@ -67,7 +69,7 @@ jobs:
           git add -A students/   # в т. ч. переименование папки (сменили ФИО/группу в форме)
           git diff --cached --quiet && exit 0
           git commit -q -m "students/$NICK: из Issue #$N"
-          for i in 1 2 3; do git pull -q --rebase origin main && git push -q origin HEAD:main && break; sleep 3; done
+          for i in 1 2 3 4 5 6; do git pull -q --rebase origin main && git push -q origin HEAD:main && break; sleep $((RANDOM % 5 + 2)); done
       - name: Запуск джоб
         if: steps.bot.outputs.dispatch != ''
         env:

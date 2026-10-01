@@ -50,9 +50,9 @@ make code S=<ник>               # проверка → build/<группа>-2
 make code-try G=А-12 M=14 F=путь/к/prog1.a51   # любой файл под любой вариант (номер программы — из имени progN)
 ```
 
-Без установки: закоммить `students/<ник>/code/progN.a51` и запушь — GitHub Actions → **code** проверит
+Без установки: закоммить `students/<ник>/code/progN.a51` и запушь — GitHub Actions → **КМ-3 программы и ПЗ2** проверит (без прав на запись — через Issue, команда `/км3`)
 и положит результаты в ветку `results` (`<группа>/<M> <ФИО>/ПЗ2-K по СХЕМА-N/программы/`) и на Яндекс-диск; отчёт — на странице запуска (Summary).
-Руками: Actions → code → Run workflow → ник.
+Руками: Actions → «КМ-3 программы и ПЗ2» → Run workflow → ник.
 
 Что в `build/<группа>/<M>/code/`:
 
@@ -178,5 +178,5 @@ Y2 сначала записывается в регистр, **потом** с�
 `push AR0`, `mov AR7, A`), `имя EQU R7`, метка с пробелом перед «:», `IF/ELSE/ENDIF`.
 
 Устройство: `internal/asm51` — ассемблер (синтаксис A51/ASEM; байты сверяются с MCU 8051 IDE в CI —
-`scripts/mide_crosscheck.sh`; в CI — джоба `mide`: Actions → code → Run workflow с галочкой), `internal/emu51` — эмулятор 8051 (сверен с ucsim s51: `MPS_S51_DIFF=1 go test ./internal/emu51`, нужен `brew install sdcc`), `internal/sim51` — управление s51 для этой сверки, `internal/codecheck` — правила, модели устройств
-и сценарии, `cmd/mpscode` — CLI, `.github/workflows/code.yml` — CI. Ресерч инструментов — `docs/research/asm-tools.md`.
+`scripts/mide_crosscheck.sh`; в CI — джоба `mide`: Actions → «КМ-3 программы и ПЗ2» → Run workflow с галочкой), `internal/emu51` — эмулятор 8051 (сверен с ucsim s51: `MPS_S51_DIFF=1 go test ./internal/emu51`, нужен `brew install sdcc`), `internal/sim51` — управление s51 для этой сверки, `internal/codecheck` — правила, модели устройств
+и сценарии, `cmd/mpscode` — CLI, `.github/workflows/km3.yml` — CI. Ресерч инструментов — `docs/research/asm-tools.md`.
