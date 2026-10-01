@@ -40,3 +40,20 @@ func TestRenderAll(t *testing.T) {
 		}
 	}
 }
+
+// Каждый шрифт из набора открывается и рисует схему: иначе ПЗ1/ПЗ2 падают у студентов, которым он выпал.
+func TestFontsParse(t *testing.T) {
+	c, err := Parse("начало: Тест\nдействие: Проверка шрифта «Ёж» 0…9\nконец: Возврат\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range Fonts {
+		b, err := os.ReadFile("../../fonts/" + f.File)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Render(c, Options{Font: b, Style: Style{Font: f.File, FontMM: f.MM, BlockB: 40, BlockA: 15, Gap: 5, Stroke: 0.3}}); err != nil {
+			t.Errorf("%s: %v", f.File, err)
+		}
+	}
+}

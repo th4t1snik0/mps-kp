@@ -122,6 +122,17 @@ def pick(fields, *names):
     return ""
 
 
+def norm_fio(raw):
+    """«иванов иван иванович», «Иванов И. И.», «Петрова-водкина а.с.» → «Иванов И.И.», «Петрова-Водкина А.С.»; не похоже на ФИО — как есть."""
+    t = re.sub(r"\s+", " ", raw.replace("ё", "ё")).strip().strip(".,")
+    parts = [p for p in re.split(r"[ .]+", t) if p]
+    if not parts or not all(re.fullmatch(r"[А-ЯЁа-яё][А-ЯЁа-яё\-]*", p) for p in parts):
+        return t
+    fam = "-".join(w[:1].upper() + w[1:].lower() for w in parts[0].split("-"))
+    ini = "".join(p[0].upper() + "." for p in parts[1:3])
+    return f"{fam} {ini}" if ini else fam
+
+
 def nick_of(group, fio):
     code, o = run("bin/mpsgen", "-nick", "-group", group, "-name", fio)
     return o if code == 0 else ""
@@ -305,15 +316,18 @@ def main():
     issue_body = read(os.environ.get("ISSUE_BODY_FILE", ""))
     reply, changed, dispatch = [], [], []
     f = form_fields(issue_body)
-    fio = re.sub(r"\s+", " ", pick(f, "ФИО", "Фамилия")).strip()
+    fio = norm_fio(pick(f, "ФИО", "Фамилия"))
     group = pick(f, "Группа").split()[0] if pick(f, "Группа") else ""
     m = pick(f, "Вариант")
     form = {"fio": fio, "group": group, "m": m, "checker": pick(f, "Преподаватель", "Проверяющий"), "style": pick(f, "Стиль")}
     errs = []
-    if not re.fullmatch(r"[А-ЯЁ][а-яё\-]+ [А-ЯЁ]\.\s?[А-ЯЁ]?\.?", fio):
+    if not re.fullmatch(r"[А-ЯЁ][а-яё]+(-[А-ЯЁ][а-яё]+)? [А-ЯЁ]\.([А-ЯЁ]\.)?", fio):
         errs.append(f"ФИО «{fio}» — нужно «Фамилия И.О.», например «Рязанцев И.В.»")
-    if not re.fullmatch(r"\d{1,2}", m) or not 1 <= int(m) <= 30:
+    if not re.fullmatch(r"0*\d{1,2}", m) or not 1 <= int(m) <= 30:
         errs.append(f"вариант «{m}» — число 1…30")
+    else:
+        m = str(int(m))  # «08» → 8
+        form["m"] = m
     nick = nick_of(group, fio) if not errs else ""
     if not errs and not nick:
         errs.append("не получилось посчитать ник по группе и ФИО")
@@ -321,12 +335,35 @@ def main():
         reply.append("❌ Не могу принять форму:\n" + "\n".join(f"- {e}" for e in errs) +
                      "\n\nИсправьте описание Issue (… → Edit) — бот перечитает его.")
         return finish("", [], [], reply)
+    # папка этого Issue (если уже заведена) — по файлу issue; ФИО/группу поменяли в форме — переименовать
+    mine = ""
+    for d in sorted(glob.glob(os.path.join(ROOT, "students", "*", "issue"))):
+        if read(d).strip() == issue:
+            mine = os.path.basename(os.path.dirname(d))
+    taken = lambda n: read(os.path.join(ROOT, "students", n, "issue")).strip() not in ("", issue)
+    if taken(nick):
+        other = read(os.path.join(ROOT, "students", nick, "variant.yaml"))
+        om = re.search(r"^m:\s*(\d+)", other, re.M)
+        if om and om.group(1) != m:
+            nick = f"{nick}_{m}"  # тёзка в той же группе с другим вариантом
+        else:
+            reply.append(f"❌ Вариант {m} группы {group} с этим ФИО уже ведётся в Issue #{read(os.path.join(ROOT, 'students', nick, 'issue')).strip()}. "
+                         "Работайте там (если это ошибка — напишите руководителю репо).")
+            return finish("", [], [], reply)
+    for vy in glob.glob(os.path.join(ROOT, "students", "*", "variant.yaml")):
+        d = os.path.basename(os.path.dirname(vy))
+        t = read(vy)
+        if d not in (nick, mine) and not d.startswith("example") and re.search(rf"^group:\s*{re.escape(group)}\s*$", t, re.M) \
+                and re.search(rf"^m:\s*0*{m}\s*$", t, re.M):
+            reply.append(f"❌ Вариант {m} группы {group} уже занят (`students/{d}/`). Проверьте номер варианта в форме "
+                         "(… → Edit) — у двоих в группе один вариант быть не может.")
+            return finish("", [], [], reply)
+    if mine and mine != nick and event in ("edited", "reopened"):
+        os.rename(os.path.join(ROOT, "students", mine), os.path.join(ROOT, "students", nick))
+        reply.append(f"ФИО или группа изменились — папка переименована: `students/{mine}/` → `students/{nick}/`.")
+        changed.append(f"students/{mine}")
     sdir = os.path.join(ROOT, "students", nick)
     own = read(os.path.join(sdir, "issue")).strip()
-    if own and own != issue:
-        reply.append(f"❌ Папка `students/{nick}/` уже ведётся в Issue #{own}. Работайте там "
-                     "(или закройте старый Issue и напишите руководителю репо).")
-        return finish("", [], [], reply)
 
     if event in ("opened", "edited", "reopened"):
         new = variant_yaml(form)
@@ -351,6 +388,8 @@ def main():
         write(nick, "issue", issue + "\n", changed)
         dispatch.append("km1")
     for cmd, args, blocks in cmds:
+        if cmd in ("км", "km") and args[:1] in "123" and args:  # «/км 2» → «/км2»
+            cmd, args = cmd + args[0], args[1:].strip()
         block = blocks[0][1] if blocks else None
         try:
             if cmd in ("помощь", "help"):

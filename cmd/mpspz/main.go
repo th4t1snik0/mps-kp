@@ -96,12 +96,17 @@ func main() {
 		for _, f := range flows {
 			src, err := os.ReadFile(f)
 			die(err)
+			// ошибка в схеме студента не роняет ПЗ2: схема пропускается, ошибка — в предупреждения (report.md, карточка Issue)
 			c, err := flow.Parse(string(src))
 			if err != nil {
-				die(fmt.Errorf("%s: %w", f, err))
+				warns = append(warns, fmt.Sprintf("схема `%s` не разобрана и в ПЗ2 не вошла: %v — исправьте pz/flow/%s", filepath.Base(f), err, filepath.Base(f)))
+				continue
 			}
 			img, err := flow.Render(c, flow.Options{Font: font, Style: fst})
-			die(err)
+			if err != nil {
+				warns = append(warns, fmt.Sprintf("схема `%s` не нарисована: %v", filepath.Base(f), err))
+				continue
+			}
 			id := strings.TrimSuffix(filepath.Base(f), ".flow")
 			pngName := "flow-" + id + ".png"
 			w, err := os.Create(filepath.Join(out, pngName))
