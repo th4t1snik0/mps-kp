@@ -23,7 +23,8 @@
    при желании `style` (A–D; пусто — «авто», свой для группы и варианта). Прочитай `build/<группа>-23/<M>/params.md` после `make student S=<ник>`.
 2. **Схема (КМ-1).** Пуш `variant.yaml` → джоба «КМ-1 схема и перечень» сама соберёт `СХЕМА-1` (или Actions → Run workflow → ник).
    Это и есть сдача КМ-1: PNG/PDF схемы и `perechen-km1.pdf`.
-3. **ПЗ1 (КМ-2).** `make pz1-init S=<ник>` → `pz/pz1.md`: `p1.intro`, `p1.buffer`, `p1.timing` (времена IDT7005 — только из даташита; нет — так и написать).
+3. **ПЗ1 (КМ-2).** `make pz1-init S=<ник>` → `pz/pz1.md`: `p1.intro`, `p1.buffer` (сравнение с временами IDT7005 генерируется по даташиту
+   `docs/group/idt7005 [en].pdf`; свой вывод — по желанию в `p1.timing`).
    Гайд по ПЗ — [`docs/pz-guide.md`](docs/pz-guide.md).
 4. **Программы (КМ-3).** `make code-init S=<ник>` → заготовки в `students/<ник>/code/`. Пиши **свою** реализацию по
    [`docs/code-guide.md`](docs/code-guide.md), раздел 0 (не копируй `testdata/ref/` и чужие `students/*/code/`). `make code S=<ник>` — до всех ✅.
