@@ -28,6 +28,7 @@ type Doc struct {
 	appendixNo int
 	Style      DocStyle
 	toc        []tocEntry
+	tocPages   []int // номера страниц заголовков (FillTOCPages), nil — без номеров
 }
 
 type tocEntry struct {
@@ -231,11 +232,17 @@ func (d *Doc) tocXML() string {
 	var b strings.Builder
 	b.WriteString(`<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>СОДЕРЖАНИЕ</w:t></w:r></w:p>`)
 	for i, e := range d.toc {
-		b.WriteString(fmt.Sprintf(`<w:p><w:pPr><w:pStyle w:val="TOC%d"/></w:pPr>`, e.level))
+		// правая табуляция с точками на ширину поля текста (175 мм), номер страницы — после неё
+		b.WriteString(fmt.Sprintf(`<w:p><w:pPr><w:pStyle w:val="TOC%d"/><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="%d"/></w:tabs></w:pPr>`, e.level, twip(textW)))
 		if i == 0 {
 			b.WriteString(`<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \o "1-2" \h \z \u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>`)
 		}
 		b.WriteString(`<w:r><w:t xml:space="preserve">` + xmlEsc(e.text) + `</w:t></w:r>`)
+		num := ""
+		if i < len(d.tocPages) {
+			num = fmt.Sprint(d.tocPages[i])
+		}
+		b.WriteString(`<w:r><w:tab/></w:r><w:r><w:t>` + num + `</w:t></w:r>`)
 		if i == len(d.toc)-1 {
 			b.WriteString(`<w:r><w:fldChar w:fldCharType="end"/></w:r>`)
 		}

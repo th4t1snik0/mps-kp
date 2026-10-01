@@ -41,8 +41,9 @@ func stylesXML(ds DocStyle) string {
 		para("TitlePage", "TitlePage", "Normal", center, "", "") +
 		para("TitleRight", "TitleRight", "Normal", fmt.Sprintf(`<w:ind w:left="%d" w:firstLine="0"/><w:jc w:val="left"/>`, int(9*cm)), "", "") +
 		para("Center", "Center", "Normal", center, "", "") +
+		para("ListingTitle", "ListingTitle", "Normal", `<w:keepNext/><w:spacing w:before="240" w:after="60"/><w:ind w:firstLine="0"/><w:jc w:val="left"/>`, rpr(24, "<w:b/>"), "") +
 		para("Fill", "Fill", "Normal", `<w:shd w:val="clear" w:color="auto" w:fill="FFF2A8"/><w:pBdr><w:left w:val="single" w:sz="18" w:space="4" w:color="E0A800"/></w:pBdr>`, rpr(24, "<w:i/>"), "") +
-		para("SourceCode", "Source Code", "Normal", `<w:ind w:firstLine="0"/><w:jc w:val="left"/><w:wordWrap w:val="off"/>`, `<w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr>`, "") +
+		para("SourceCode", "Source Code", "Normal", `<w:ind w:firstLine="0"/><w:jc w:val="left"/><w:wordWrap w:val="off"/>`, fmt.Sprintf(`<w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:cs="Courier New"/><w:sz w:val="%d"/><w:szCs w:val="%[1]d"/></w:rPr>`, ds.codeSz()), "") +
 		para("BlockText", "Block Text", "Normal", body, "", "") +
 		para("Caption", "Caption", "Normal", center+`<w:spacing w:before="60" w:after="240"/>`, "", "") +
 		para("ImageCaption", "Image Caption", "Caption", center+`<w:spacing w:before="60" w:after="240"/>`, "", "") +

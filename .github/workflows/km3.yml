@@ -47,7 +47,7 @@ permissions:
 jobs:
   code:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +59,13 @@ jobs:
         run: |
           curl -sSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.11/pandoc-3.11-1-amd64.deb
           sudo dpkg -i /tmp/pandoc.deb >/dev/null
+
+      - name: LibreOffice — номера страниц в содержании (не поставился — содержание без номеров, Word допишет)
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libreoffice-writer-nogui poppler-utils fonts-liberation >/dev/null
 
       - name: Тесты ассемблера, эмулятора, чекера и ПЗ (эталоны проходят, поломки падают)
         run: go test ./internal/asm51/ ./internal/emu51/ ./internal/codecheck/ ./internal/flow/ ./internal/pz/

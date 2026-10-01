@@ -129,6 +129,12 @@ func main() {
 	}
 	name := docName(p.Student, strings.ToUpper(strings.Replace(*doc, "pz", "ПЗ", 1)))
 	die(pz.Build(d, filepath.Join(out, name)))
+	// номера страниц в содержании — по рендеру LibreOffice (если он есть; в CI ставится)
+	if err := pz.FillTOCPages(d, filepath.Join(out, name)); err != nil {
+		fmt.Fprintf(os.Stderr, "содержание без номеров страниц (%v) — Word проставит их при открытии\n", err)
+	} else {
+		die(pz.Build(d, filepath.Join(out, name)))
+	}
 	left := 0
 	var todo strings.Builder
 	for _, f := range d.Fills {

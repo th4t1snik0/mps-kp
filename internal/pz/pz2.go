@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"mpskp/internal/asm51"
 	"mpskp/internal/codecheck"
@@ -20,7 +21,7 @@ type Program struct {
 // FlowFig — схема алгоритма (PNG уже в Dir).
 type FlowFig struct {
 	ID, Title, File string
-	Text            string // пояснение по умолчанию (пересказ схемы)
+	Text            string  // пояснение по умолчанию (пересказ схемы)
 	WidthCm         float64 // ширина на странице (натуральный размер рисунка)
 }
 
@@ -64,7 +65,7 @@ func BuildPZ2(d *Doc, in PZ2) {
 		fio = "Фамилия И.О."
 	}
 	// ---------------------------------------------------------------- титул (шаблон Прил. Б ТЗ)
-	d.Title(TitleInfo{Doc: "Описание программной части", FIO: fio, Group: in.GroupFull, M: p.M, Checker: in.Checker, Year: in.Year, Appendix: "Приложение Б"})
+	d.Title(TitleInfo{Doc: "Описание программной части", FIO: fio, Group: in.GroupFull, M: p.M, Checker: in.Checker, Year: in.Year})
 
 	// ---------------------------------------------------------------- аннотация
 	d.H1("АННОТАЦИЯ", false)
@@ -306,23 +307,47 @@ func BuildPZ2(d *Doc, in PZ2) {
 
 	// ---------------------------------------------------------------- лист регистрации изменений (шаблон Прил. Б)
 	d.H1("ЛИСТ РЕГИСТРАЦИИ ИЗМЕНЕНИЙ", false)
-	var lr [][]string
-	for i := 0; i < 12; i++ {
-		lr = append(lr, []string{"\u00a0", "", "", "", "", "", "", "", "", ""})
-	}
-	d.TableW("Лист регистрации изменений", []string{"Изм.", "Изменённых листов", "Заменённых", "Новых", "Аннулированных",
-		"Всего листов в докум.", "№ документа", "Входящий № сопр. докум. и дата", "Подп.", "Дата"}, lr, []int{6, 10, 10, 8, 11, 10, 10, 14, 8, 8})
+	d.w("\n```{=openxml}\n%s\n```\n\n", changeSheet(24))
 
 	// ---------------------------------------------------------------- приложение: листинги
 	d.Appendix("Листинги программ")
+	cols := 0
+	for _, pr := range in.Programs {
+		for _, l := range strings.Split(expandTabs(pr.Src), "\n") {
+			cols = max(cols, utf8.RuneCountInString(strings.TrimRight(l, " ")))
+		}
+	}
+	d.Style.CodeSz = FitCode(cols)
 	for _, pr := range in.Programs {
 		name := fmt.Sprintf("Программа %d", pr.N)
 		if pr.Report != nil {
 			name += " — файл «" + strings.TrimSuffix(pr.Report.RobotName, ".txt") + "»"
 		}
-		d.P("**%s**", esc(name))
-		d.Code(strings.ReplaceAll(strings.TrimPrefix(pr.Src, "\uFEFF"), "\t", "        "))
+		d.Styled("ListingTitle", esc(name))
+		d.Code(expandTabs(strings.TrimPrefix(pr.Src, "\uFEFF")))
 	}
+}
+
+// expandTabs — табуляции до позиций, кратных 8 (как в редакторе): комментарии встают в столбец.
+func expandTabs(s string) string {
+	var b strings.Builder
+	col := 0
+	for _, r := range s {
+		switch r {
+		case '\t':
+			n := 8 - col%8
+			b.WriteString(strings.Repeat(" ", n))
+			col += n
+		case '\n':
+			b.WriteRune(r)
+			col = 0
+		case '\r':
+		default:
+			b.WriteRune(r)
+			col++
+		}
+	}
+	return b.String()
 }
 
 func dash(s string) string {
