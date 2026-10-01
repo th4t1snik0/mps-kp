@@ -42,6 +42,9 @@ HELP = """**Команды** (пишите комментарием; содер�
 | `/flow 02-main` + блок | записать схему алгоритма `pz/flow/02-main.flow` |
 | `/правка` + блок yaml | правки схемы по замечаниям → `schema/fixes.yaml` (номиналы, перечень, «Примечание», сдвиги), затем `/всё` |
 | `/замечание КМ-1 текст` | записать замечание руководителя в историю (`remarks.md`), дословно |
+| `/файл pz/flow/14-x.flow` + блок | записать любой файл в папке студента (`.a51`, `.md`, `.flow`, `.yaml`) |
+| `/удалить pz/flow/14-x.flow` | удалить файл из папки студента (кроме `variant.yaml`, `issue`, `remarks.md`) |
+| `/доступ` | попросить у владельца репо права на запись (работать пушами, Run workflow) |
 
 Файлы студента лежат в репо: `students/{nick}/` — их можно читать (нейронке — тоже) и присылать исправленные целиком.
 Как писать программы и ПЗ — `docs/code-guide.md`, `docs/pz-guide.md`, формат правок — `AGENTS.md`, «Замечания руководителя».
@@ -116,6 +119,28 @@ def blocks_after(text):
             i += 1
         res.append((cmd, args, block))
     return res
+
+
+ALLOWED = re.compile(r"^(code/[\w.-]+\.a51|pz/[\w.-]+\.md|pz/flow/[\w.-]+\.flow|schema/[\w.-]+\.yaml|[\w.-]+\.md)$")
+
+
+def safe_rel(rel):
+    """Путь внутри папки студента: только известные места и расширения, без «..»."""
+    rel = rel.strip().strip("`").lstrip("./")
+    if ".." in rel.split("/") or not ALLOWED.match(rel):
+        raise ValueError(f"путь «{rel}» нельзя: можно code/*.a51, pz/*.md, pz/flow/*.flow, schema/*.yaml, *.md")
+    return rel
+
+
+def km_for(rel):
+    """Какую джобу пересобрать после правки файла."""
+    if rel.startswith("schema/"):
+        return "km1-next"
+    if rel == "pz/pz1.md":
+        return "km2"
+    if rel.startswith("code/") or rel.startswith("pz/"):
+        return "km3"
+    return ""
 
 
 def write(nick, rel, content, changed):
@@ -245,6 +270,31 @@ def main():
                     raise ValueError("/правка: нужен блок ```yaml с правками (формат — AGENTS.md, «Замечания руководителя»)")
                 write(nick, "schema/fixes.yaml", block, changed)
                 dispatch.append("km1-next")
+            elif cmd in ("файл", "file"):
+                rel = safe_rel(args)
+                if block is None:
+                    raise ValueError(f"/файл {args}: нужен блок с содержимым (```…```) сразу после команды")
+                write(nick, rel, block, changed)
+                dispatch.append(km_for(rel))
+            elif cmd in ("удалить", "delete", "rm"):
+                rel = safe_rel(args)
+                if rel in ("variant.yaml", "issue", "remarks.md"):
+                    raise ValueError(f"`{rel}` не удаляется (данные варианта — правкой формы Issue, история замечаний — только дописывается)")
+                path = os.path.join(sdir, rel)
+                if not os.path.isfile(path):
+                    raise ValueError(f"нет файла `students/{nick}/{rel}`")
+                os.remove(path)
+                changed.append(f"students/{nick}/{rel}")
+                dispatch.append(km_for(rel))
+                reply.append(f"Удалён `students/{nick}/{rel}`.")
+            elif cmd in ("доступ", "access"):
+                who = os.environ.get("COMMENT_AUTHOR", "")
+                owner = os.environ.get("REPO_OWNER", "")
+                repo = os.environ.get("GITHUB_REPOSITORY", "")
+                reply.append(f"@{owner}: **@{who}** просит права на запись в репо (чтобы работать пушами и Run workflow).\n\n"
+                             f"Добавить: Settings → Collaborators → Add people → `{who}` (роль Write), или одной командой:\n"
+                             f"```sh\ngh api -X PUT repos/{repo}/collaborators/{who} -f permission=push\n```\n"
+                             "Пока доступа нет, всё работает и через команды в этом Issue.")
             elif cmd in ("замечание", "remark"):
                 mm = re.match(r"(?:КМ-?|KM-?)?(\d)\s+(.*)", args, re.S | re.I)
                 body = (mm.group(2) if mm else args) + ("\n" + block if block else "")
@@ -268,6 +318,7 @@ def finish(nick, changed, dispatch, reply):
     out("commit", "1" if changed else "")
     # km1-next включает km2 и km3 (их запустит КМ-1 по готовности схемы)
     d = []
+    dispatch = [k for k in dispatch if k]
     for k in ("km1-next", "km1", "km2", "km3"):
         if k in dispatch and k not in d:
             d.append(k)
