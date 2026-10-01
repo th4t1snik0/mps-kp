@@ -20,6 +20,9 @@ type Jitter struct {
 	JunctionD      float64 // диаметр точки соединения, мм (0 — по умолчанию KiCad)
 	BusW, WireW    float64 // толщина шин и проводов, мм (0 — по умолчанию KiCad)
 	LabelItalic    bool    // метки цепей курсивом
+	NoteDX, NoteDY float64 // сдвиг «Примечания», мм (вправо — сколько позволяет рамка; вниз — до штампа)
+	DecDX, DecDY   float64 // сдвиг дешифратора DD11 (связан с остальным только метками)
+	PwrDY          float64 // сдвиг полосы фильтров питания с XS1 (связана только знаками +5V/GND)
 }
 
 // Plain — без вариаций (как принятая схема; для тестов и эталонов).
@@ -48,5 +51,11 @@ func MakeJitter(seed string, rows int) Jitter {
 	j.BusW = []float64{0, 0.45, 0.6}[r.Intn(3)]
 	j.WireW = []float64{0, 0.2}[r.Intn(2)]
 	j.LabelItalic = r.Intn(2) == 1
+	// сдвиги отдельных блоков: «Примечание» правее не дальше, чем позволяет общий сдвиг (иначе вылезет за рамку)
+	j.NoteDX = float64(r.Intn(int((33-j.ShiftX)/2.54)+1)) * 2.54
+	j.NoteDY = float64(r.Intn(4)) * 2.54 // 0…7,62 вниз: выше — земля регистра индикатора, ниже — штамп
+	j.DecDX = float64(r.Intn(9)-2) * 2.54  // −5,08…+15,24
+	j.DecDY = float64(r.Intn(9)) * 2.54    // 0…20,32
+	j.PwrDY = float64(r.Intn(3)-1) * 2.54  // −2,54…+2,54
 	return j
 }

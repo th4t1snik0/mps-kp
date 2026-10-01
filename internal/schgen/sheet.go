@@ -525,6 +525,54 @@ func (s *Sheet) labelFontExpr() *Node {
 	return f
 }
 
+// mark — отметка «что уже есть на листе» для moveSince.
+type mark struct{ items, wires, pins, buses, entries int }
+
+func (s *Sheet) mark() mark {
+	return mark{len(s.items), len(s.wires), len(s.pinPts), len(s.buses), len(s.entries)}
+}
+
+// moveSince сдвигает всё, что добавлено на лист после m (один блок): узлы, провода, точки выводов, шины — и элементы
+// (их положение нужно нумерации и рамкам узлов). Только для блоков, связанных с остальным метками и знаками питания.
+func (s *Sheet) moveSince(m mark, dx, dy float64) {
+	if dx == 0 && dy == 0 {
+		return
+	}
+	mv := func(p Pt) Pt { return Pt{round(p.X + dx), round(p.Y + dy)} }
+	moved := map[*Node]bool{}
+	for _, it := range s.items[m.items:] {
+		moved[it] = true
+		it.Walk(func(n *Node) {
+			switch n.Head() {
+			case "at", "xy", "start", "end", "mid", "center":
+				n.Kids[1] = F(round(n.Num(0) + dx))
+				n.Kids[2] = F(round(n.Num(1) + dy))
+			}
+		})
+	}
+	for i := m.wires; i < len(s.wires); i++ {
+		s.wires[i] = [2]Pt{mv(s.wires[i][0]), mv(s.wires[i][1])}
+	}
+	for i := m.pins; i < len(s.pinPts); i++ {
+		s.pinPts[i] = mv(s.pinPts[i])
+	}
+	for i := m.buses; i < len(s.buses); i++ {
+		s.buses[i] = [2]Pt{mv(s.buses[i][0]), mv(s.buses[i][1])}
+	}
+	for i := m.entries; i < len(s.entries); i++ {
+		s.entries[i] = [2]Pt{mv(s.entries[i][0]), mv(s.entries[i][1])}
+	}
+	for _, c := range s.syms {
+		if !moved[c.node] {
+			continue
+		}
+		c.At = mv(c.At)
+		for k, p := range c.pins {
+			c.pins[k] = mv(p)
+		}
+	}
+}
+
 // shift сдвигает весь чертёж (кроме lib_symbols) на J.ShiftX/ShiftY — один раз, после всех расчётов связей.
 func (s *Sheet) shift() {
 	dx, dy := s.J.ShiftX, s.J.ShiftY

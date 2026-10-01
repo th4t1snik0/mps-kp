@@ -191,7 +191,9 @@ func Build(lib *Lib, v Variant, seed string) *Sheet {
 	b.rowsAndInt()
 	b.indicator()
 	if v.Decoder {
+		mark := b.mark()
 		b.decoder()
+		b.moveSince(mark, b.Sheet.J.DecDX, b.Sheet.J.DecDY)
 	}
 	b.buses()
 	b.Renumber()
@@ -773,6 +775,7 @@ func (b *builder) indicator() {
 // ---------------------------------------------------------------- питание: XS1, 470u, 68n на каждый корпус
 
 func (b *builder) power() {
+	mark := b.mark() // полоса фильтров с XS1 сдвигается целиком (J.PwrDY)
 	yv, yg := 238.76, 248.92
 	x := 40.64
 	b.vcc(Pt{x, yv - 2.54})
@@ -802,6 +805,7 @@ func (b *builder) power() {
 	xc := b.conn("xsPwr", "pwr", "CONN_PWR", "XS1", Pt{175.26, yv})
 	b.Wire(Pt{last, yv}, cp(xc, 1))
 	b.Wire(Pt{last, yg}, Pt{168.91, yg}, Pt{168.91, cp(xc, 2).Y}, cp(xc, 2))
+	b.moveSince(mark, 0, b.Sheet.J.PwrDY)
 
 	b.placeConnXY()
 }
@@ -821,7 +825,7 @@ func (b *builder) notes() {
 		fmt.Sprintf("3. Неиспользуемые входы к GND: %s выв. 8, 9, 11, 12; %s выв. %s; %s выв. 4, 5, 9, 10, 12, 13.", nor, and, andUnused, or),
 		fmt.Sprintf("4. %s, %s устанавливать рядом с ZQ1.", b.Roles["cX1"].Ref, b.Roles["cX2"].Ref),
 	}
-	b.Text(strings.Join(lines, "\n"), Pt{229.87, 206.375}, b.Sheet.J.NoteFont)
+	b.Text(strings.Join(lines, "\n"), Pt{229.87 + b.Sheet.J.NoteDX, 206.375 + b.Sheet.J.NoteDY}, b.Sheet.J.NoteFont)
 }
 
 // joinRefs — «DD3, DD6, DD10» в порядке номеров.
