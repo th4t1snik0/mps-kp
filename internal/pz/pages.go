@@ -23,16 +23,13 @@ func Soffice() string {
 	return ""
 }
 
-// FillTOCPages рендерит docx и проставляет номера страниц в d (для следующего Build). Ошибка — номеров нет.
-func FillTOCPages(d *Doc, docx string) error {
+// RenderPDF — docx → PDF через LibreOffice (pdf — путь результата).
+func RenderPDF(docx, pdf string) error {
 	so := Soffice()
 	if so == "" {
 		return fmt.Errorf("нет LibreOffice")
 	}
-	if _, err := exec.LookPath("pdftotext"); err != nil {
-		return fmt.Errorf("нет pdftotext (poppler)")
-	}
-	tmp, err := os.MkdirTemp("", "pzpages")
+	tmp, err := os.MkdirTemp("", "pzpdf")
 	if err != nil {
 		return err
 	}
@@ -43,7 +40,27 @@ func FillTOCPages(d *Doc, docx string) error {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("LibreOffice: %v: %s", err, out)
 	}
-	pdf := filepath.Join(tmp, strings.TrimSuffix(filepath.Base(docx), filepath.Ext(docx))+".pdf")
+	b, err := os.ReadFile(filepath.Join(tmp, strings.TrimSuffix(filepath.Base(docx), filepath.Ext(docx))+".pdf"))
+	if err != nil {
+		return fmt.Errorf("LibreOffice не создал PDF: %v", err)
+	}
+	return os.WriteFile(pdf, b, 0o644)
+}
+
+// FillTOCPages рендерит docx и проставляет номера страниц и число листов в d (для следующего Build). Ошибка — номеров нет.
+func FillTOCPages(d *Doc, docx string) error {
+	if _, err := exec.LookPath("pdftotext"); err != nil {
+		return fmt.Errorf("нет pdftotext (poppler)")
+	}
+	tmp, err := os.MkdirTemp("", "pzpages")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	pdf := filepath.Join(tmp, "doc.pdf")
+	if err := RenderPDF(docx, pdf); err != nil {
+		return err
+	}
 	txt, err := exec.Command("pdftotext", "-layout", pdf, "-").Output()
 	if err != nil {
 		return fmt.Errorf("pdftotext: %v", err)
@@ -54,6 +71,10 @@ func FillTOCPages(d *Doc, docx string) error {
 		return err
 	}
 	d.tocPages = nums
+	d.pages = len(pages)
+	if strings.TrimSpace(pages[len(pages)-1]) == "" { // после последнего \f — пустой хвост
+		d.pages--
+	}
 	return nil
 }
 

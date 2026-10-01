@@ -29,7 +29,7 @@ func run(s string) string {
 }
 
 func numPages() string {
-	return `<w:r><w:rPr/><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr/><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r><w:r><w:rPr/><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr/><w:t>—</w:t></w:r><w:r><w:rPr/><w:fldChar w:fldCharType="end"/></w:r>`
+	return `<w:r><w:rPr/><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr/><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r><w:r><w:rPr/><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr/><w:t>` + pagesMarker + `</w:t></w:r><w:r><w:rPr/><w:fldChar w:fldCharType="end"/></w:r>`
 }
 
 // Титул — одна таблица без рамок с точными высотами строк (а не отступы «перед абзацем» и плавающая таблица:

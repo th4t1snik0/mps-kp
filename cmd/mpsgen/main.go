@@ -1,6 +1,6 @@
 // mpsgen — генератор материалов курсовой «МПС ч.2» под вариант.
 //
-//	mpsgen -student students/ivan/variant.yaml -render
+//	mpsgen -student students/a12_ryazantsev_iv/variant.yaml -render
 //	mpsgen -group А-17 -m 16 -name "Иванов И.И." -render   # любой вариант без файла студента
 //
 // Результат — в build/<группа>/<вариант>/ (например build/А-17-23/16/): params.md, params.json, vars.inc,
@@ -34,12 +34,22 @@ func main() {
 		chk    = flag.String("checker", "", "Фамилия И.О. преподавателя (по умолчанию Михалин С.Н.)")
 		year   = flag.String("year", "23", "год набора группы: А-12 → А-12-<year>")
 		doRend = flag.Bool("render", false, "после генерации запустить scripts/render.sh (PDF, PNG, ERC)")
-		style  = flag.String("style", "", "стиль листа A|B|C|D (пусто — по ФИО, см. internal/schgen/style.go)")
+		style  = flag.String("style", "", "стиль листа A|B|C|D (пусто — A, auto — по ФИО; см. internal/schgen/style.go)")
+		nick   = flag.Bool("nick", false, "только напечатать ник студента по -group и -name (имя папки students/<ник>/)")
 		plain  = flag.Bool("plain", false, "без «почерка» (сдвигов и вариаций шрифтов) — как эталон")
 		lib    = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
 		wks    = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
 	)
 	flag.Parse()
+	if *nick {
+		n := variant.Nick(*group, *name)
+		if *group == "" || n == "" {
+			fmt.Fprintln(os.Stderr, "нужны -group и -name: make nick G=А-12 FIO=\"Рязанцев И.В.\"")
+			os.Exit(2)
+		}
+		fmt.Println(n)
+		return
+	}
 	plainSheet = *plain
 	dir, err := run(*table, *stud, *group, *m, *name, *chk, *style, *year, *root, *out, *lib, *wks)
 	if err == nil && *doRend {

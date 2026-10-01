@@ -107,8 +107,16 @@ func headerFooter(ds DocStyle) (hdr, ftr string) {
 	hdr, ftr = empty, empty
 	num := pageField("center")
 	if ds.HeaderText != "" {
-		// номер по центру, текст — у правого края (позиционная табуляция)
-		num = `<w:p><w:pPr><w:tabs><w:tab w:val="center" w:pos="4819"/><w:tab w:val="right" w:pos="9638"/></w:tabs><w:ind w:firstLine="0"/></w:pPr><w:r><w:tab/></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>2</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r><w:r><w:tab/><w:t>` + ds.HeaderText + `</w:t></w:r></w:p>`
+		// номер по центру, текст — у правого края: таблица без рамок в три ячейки (табуляции «по центру»/«вправо»
+		// упрощённые просмотрщики docx не понимают — текст уезжает за край)
+		pf := `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>2</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`
+		c := func(jc, runs string) string {
+			return `<w:tc><w:tcPr><w:tcW w:w="3307" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:ind w:left="0" w:firstLine="0"/><w:jc w:val="` + jc + `"/></w:pPr>` + runs + `</w:p></w:tc>`
+		}
+		num = `<w:tbl><w:tblPr><w:tblW w:w="9921" w:type="dxa"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/>` +
+			`<w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="3307"/><w:gridCol w:w="3307"/><w:gridCol w:w="3307"/></w:tblGrid>` +
+			`<w:tr>` + c("left", "") + c("center", pf) + c("right", `<w:r><w:t xml:space="preserve">`+ds.HeaderText+`</w:t></w:r>`) + `</w:tr></w:tbl>` +
+			`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:ind w:firstLine="0"/><w:rPr><w:sz w:val="2"/></w:rPr></w:pPr></w:p>`
 	}
 	if ds.NumTop {
 		hdr = num

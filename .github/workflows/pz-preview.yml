@@ -8,7 +8,7 @@ on:
       student:
         description: "Ник студента (папка в students/)"
         required: true
-        default: "ivan"
+        default: "a12_ryazantsev_iv"
       doc:
         description: "pz1 | pz2"
         required: true
@@ -45,12 +45,11 @@ jobs:
           mkdir -p preview
           for st in A B C; do
             bin/mpspz -student "students/$S/variant.yaml" -doc "$DOC" -style $st >/dev/null
-            d=$(dirname "$(ls build/*/*/$DOC/*.docx | head -1)")
-            soffice --headless --convert-to pdf --outdir "$d" "$d"/*.docx >/dev/null
+            pdf="$(ls build/*/*/$DOC/*просмотр.pdf | head -1)"   # mpspz сам рендерит LibreOffice’ом (номера страниц + PDF)
             mkdir -p preview/$st
-            pdftoppm -r 70 -png "$d"/*.pdf preview/$st/p
+            pdftoppm -r 70 -png "$pdf" preview/$st/p
             go run ./scripts/montage 6 preview/sheet-$st.png "preview/$st/p-*.png"
-            cp "$d"/*.pdf "preview/$DOC-$st.pdf"
+            cp "$pdf" "preview/$DOC-$st.pdf"
           done
       - uses: actions/upload-artifact@v4
         with:

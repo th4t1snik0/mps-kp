@@ -29,6 +29,7 @@ type Doc struct {
 	Style      DocStyle
 	toc        []tocEntry
 	tocPages   []int // номера страниц заголовков (FillTOCPages), nil — без номеров
+	pages      int   // число листов по рендеру (FillTOCPages), 0 — неизвестно
 }
 
 type tocEntry struct {
@@ -229,25 +230,25 @@ func (d *Doc) TOC() { d.w("\n```{=openxml}\n%s\n```\n\n", tocMarker) }
 const tocMarker = "<!--TOC-->"
 
 func (d *Doc) tocXML() string {
+	// таблица без рамок «название | страница»: в Word, LibreOffice и упрощённых просмотрщиках выглядит одинаково
+	// (табуляция с точками до номера внутри ячейки названия — где не поддерживается, просто пробел). Номера — FillTOCPages.
 	var b strings.Builder
 	b.WriteString(`<w:p><w:pPr><w:pStyle w:val="TOCHeading"/></w:pPr><w:r><w:t>СОДЕРЖАНИЕ</w:t></w:r></w:p>`)
+	numW := twip(12)
+	txtW := twip(textW) - numW
+	fmt.Fprintf(&b, `<w:tbl><w:tblPr><w:tblW w:w="%d" w:type="dxa"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders><w:tblLayout w:type="fixed"/>`+
+		`<w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="%d"/><w:gridCol w:w="%d"/></w:tblGrid>`, txtW+numW, txtW, numW)
 	for i, e := range d.toc {
-		// правая табуляция с точками на ширину поля текста (175 мм), номер страницы — после неё
-		b.WriteString(fmt.Sprintf(`<w:p><w:pPr><w:pStyle w:val="TOC%d"/><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="%d"/></w:tabs></w:pPr>`, e.level, twip(textW)))
-		if i == 0 {
-			b.WriteString(`<w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r><w:r><w:instrText xml:space="preserve"> TOC \o "1-2" \h \z \u </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>`)
-		}
-		b.WriteString(`<w:r><w:t xml:space="preserve">` + xmlEsc(e.text) + `</w:t></w:r>`)
 		num := ""
 		if i < len(d.tocPages) {
 			num = fmt.Sprint(d.tocPages[i])
 		}
-		b.WriteString(`<w:r><w:tab/></w:r><w:r><w:t>` + num + `</w:t></w:r>`)
-		if i == len(d.toc)-1 {
-			b.WriteString(`<w:r><w:fldChar w:fldCharType="end"/></w:r>`)
-		}
-		b.WriteString(`</w:p>`)
+		fmt.Fprintf(&b, `<w:tr><w:trPr><w:cantSplit/></w:trPr><w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/><w:vAlign w:val="bottom"/></w:tcPr>`+
+			`<w:p><w:pPr><w:pStyle w:val="TOC%d"/><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="%d"/></w:tabs></w:pPr><w:r><w:t xml:space="preserve">%s</w:t></w:r><w:r><w:tab/></w:r></w:p></w:tc>`+
+			`<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/><w:vAlign w:val="bottom"/></w:tcPr><w:p><w:pPr><w:pStyle w:val="TOC%d"/><w:ind w:left="0" w:firstLine="0"/><w:jc w:val="right"/></w:pPr><w:r><w:t>%s</w:t></w:r></w:p></w:tc></w:tr>`,
+			txtW, e.level, txtW-20, xmlEsc(e.text), numW, e.level, num)
 	}
+	b.WriteString(`</w:tbl>`)
 	return b.String()
 }
 
@@ -281,7 +282,16 @@ func (d *Doc) Appendix(title string) string {
 var appLetters = []string{"А", "Б", "В", "Г", "Д", "Е", "Ж", "И", "К"}
 
 // Markdown — итоговый текст.
-func (d *Doc) Markdown() string { return strings.Replace(d.b.String(), tocMarker, d.tocXML(), 1) }
+func (d *Doc) Markdown() string {
+	n := "—"
+	if d.pages > 0 {
+		n = fmt.Sprint(d.pages)
+	}
+	return strings.ReplaceAll(strings.Replace(d.b.String(), tocMarker, d.tocXML(), 1), pagesMarker, n)
+}
+
+// pagesMarker — место числа листов в поле NUMPAGES титула (заполняется по рендеру; Word пересчитает поле сам).
+const pagesMarker = "@@NUMPAGES@@"
 
 // ------------------------------------------------------------------ текст студента
 

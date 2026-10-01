@@ -27,6 +27,9 @@ test:
 student: bin/mpsgen
 	./bin/mpsgen -table $(TABLE) -year $(Y) -student students/$(S)/variant.yaml -style "$(STYLE)" -render
 
+nick: bin/mpsgen
+	@./bin/mpsgen -nick -group "$(G)" -name "$(FIO)"
+
 try: bin/mpsgen
 	./bin/mpsgen -table $(TABLE) -year $(Y) -group "$(G)" -m $(M) -name "$(FIO)" -checker "$(CHK)" -style "$(STYLE)" -render
 

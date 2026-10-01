@@ -134,6 +134,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "содержание без номеров страниц (%v) — Word проставит их при открытии\n", err)
 	} else {
 		die(pz.Build(d, filepath.Join(out, name)))
+		// PDF «для просмотра» — как документ выглядит в LibreOffice (встроенные просмотрщики docx упрощённые);
+		// свой PDF студент делает сам из docx, когда допишет
+		pdf := filepath.Join(out, strings.TrimSuffix(name, ".docx")+" — просмотр.pdf")
+		if err := pz.RenderPDF(filepath.Join(out, name), pdf); err != nil {
+			fmt.Fprintf(os.Stderr, "PDF для просмотра не собран: %v\n", err)
+		}
 	}
 	left := 0
 	var todo strings.Builder
