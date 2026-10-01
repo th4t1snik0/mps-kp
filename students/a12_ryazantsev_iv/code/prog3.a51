@@ -14,8 +14,9 @@ org 0bh ; "заглушка" для Tmr0_ovf
 org 13h ; "заглушка" для INT1
         nop
         reti
-org 1bh                         ; Timer1 — конец строба Y2
-        ; TODO: остановить таймер, PIN_Y2 = 1
+org 1bh                         ; Timer1 — отсчитали T2, строб Y2 заканчивается
+        clr TR1                 ; таймер больше не нужен
+        setb PIN_Y2             ; строб в пассивную единицу
         reti
 org 23h ; "заглушка" для UART
         nop
@@ -24,16 +25,43 @@ org 2bh
 START:
 ; Инициализация МК **********************************************
         mov SP, #07h
-        ; TODO: CS_EN = 1; PIN_Y2 = 1 (строб пассивен); TMOD для Timer1; разрешить ET1 и EA
+        setb PIN_CSEN           ; дешифратор включён — регистр Y2 доступен по movx
+        setb PIN_Y2             ; строб Y2 пока не активен
+        anl TMOD, #0Fh          ; Timer1: режим 1 (16 бит), Timer0 не трогаем
+        orl TMOD, #10h
+        setb PT1                ; конец строба важнее остального — высокий приоритет
+        setb ET1                ; прерывание от Timer1
+        setb EA
         mov X1, #3              ; пример входных данных
         mov X2, #200
         call Y2Out ; %proc%
         jmp $ ; %stop%
 
-; Y2Out — расчёт Y2 = (G+M+X1+X2) mod 256 (X1 = 0 → Y2 = 0), запись в регистр Y2 и строб T2.
-; Вход: X1, X2. Выход: регистр Y2; PIN_Y2 = 0 на T2 мкс (конец — в прерывании Timer1).
-; TODO: что портит
+; Y2Out — вычисление выхода Y2 и его выдача внешнему устройству.
+; Y2 = (G + M + X1 + X2) mod 256, а при X1 = 0 — просто 0. Значение пишется в регистр Y2,
+; после этого на P1.4 выдаётся строб 0 длиной T2; конец строба делает обработчик Timer1.
+; Вход: X1, X2. Выход: регистр Y2, строб на PIN_Y2 запущен. Портит: ничего (A, DPTR, PSW сохраняются).
 Y2Out:
-        ; TODO: расчёт (Y2_CONST = G+M), movx в ADR_Y2, затем Timer1 = T2_RELOAD_H:L и PIN_Y2 = 0
+        push PSW
+        push ACC
+        push DPL
+        push DPH
+        mov A, X1
+        jz YoWrite              ; X1 = 0 — выдаём ноль
+        add A, #Y2_CONST        ; G + M + X1; перенос отбрасывается — это и есть mod 256
+        add A, X2
+YoWrite:
+        mov DPTR, #ADR_Y2
+        movx @DPTR, A           ; сначала данные в регистр
+        clr TR1                 ; на случай, если прошлый строб ещё идёт — перезапускаем отсчёт
+        mov TH1, #T2_RELOAD_H   ; Timer1 отсчитает T2
+        mov TL1, #T2_RELOAD_L
+        clr TF1                 ; старый запрос не нужен
+        clr PIN_Y2              ; строб пошёл
+        setb TR1
+        pop DPH
+        pop DPL
+        pop ACC
+        pop PSW
         ret
 END
