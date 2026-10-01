@@ -77,6 +77,33 @@ for attempt in 1 2 3; do
     # история замечаний руководителя студента — копией в каждый прогон
     nick="$(cat "$d/.nick" 2>/dev/null || python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("nick",""))' "$d/meta.json" 2>/dev/null || true)"
     [ -n "$nick" ] && [ -f "students/$nick/remarks.md" ] && cp "students/$nick/remarks.md" "$out/Замечания.md"
+    # имена файлов для отправки — по ТЗ-2026 (разд. 2.1, 2.2): «Фамилия ИО Смысл-vN», N = 1 + замечаний к этому КМ в remarks.md
+    case "$kind" in СХЕМА) km=1 ;; ПЗ1) km=2 ;; *) km=3 ;; esac
+    ver=$(( $(grep -cE "^## .* — КМ-$km — " "students/$nick/remarks.md" 2>/dev/null || true) + 1 ))
+    short="$(python3 - "$d" <<'PY'
+import json, os, re, sys
+d = sys.argv[1]
+fio = ""
+try:
+    fio = json.load(open(os.path.join(d, "meta.json"), encoding="utf-8")).get("student", "")
+except (OSError, ValueError):
+    dest = open(os.path.join(d, ".dest"), encoding="utf-8").read().strip() if os.path.exists(os.path.join(d, ".dest")) else ""
+    fio = re.sub(r"^\d+\s+", "", dest.split("/")[-1])
+print(fio.replace(".", "").strip())
+PY
+)"
+    if [ -n "$short" ]; then
+      case "$kind" in
+        СХЕМА) [ -f "$out/schematic.png" ] && cp "$out/schematic.png" "$out/$short Схема-v$ver.png" ;;
+        ПЗ1|ПЗ2)
+          for f in "$out/"*.docx "$out/"*" — просмотр.pdf"; do
+            [ -f "$f" ] || continue
+            b="$(basename "$f")"; nb="${b/$kind/$kind-v$ver}"
+            [ "$b" != "$nb" ] && mv "$f" "$out/$nb"
+          done ;;
+      esac
+      printf '%s\n%s\n' "$short" "$ver" > "$d/.send"
+    fi
     printf '%s\nworkflow: %s, запуск %s\nкоммит: %s\nдата: %s\n' "$name" "${GITHUB_WORKFLOW:-local}" \
       "${GITHUB_SERVER_URL:-}/${repo}/actions/runs/${GITHUB_RUN_ID:-}" "${GITHUB_SHA:-}" "$(date -u '+%Y-%m-%d %H:%M UTC')" > "$d/run.txt"
     cp "$d/run.txt" "$out/"

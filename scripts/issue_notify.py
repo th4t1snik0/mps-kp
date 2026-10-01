@@ -72,17 +72,19 @@ def ok(d):
         docs = [f for f in files if f.endswith(".docx") or f.endswith(".pdf")]
         if docs:
             lines.append(" · ".join(f"[{f}]({blob}/{q(f)})" for f in docs))
-        rep = read(os.path.join(d, "pz1" if run.startswith("ПЗ1") else "pz2", "report.md"))
+        doc, cmd = ("pz1", "пз1") if run.startswith("ПЗ1") else ("pz2", "пз2")
+        rep = read(os.path.join(d, doc, "report.md"))
         m = re.search(r"Мест «ДОПИШИ»: \d+, осталось заполнить: (\d+)", rep)
         if m:
             left = int(m.group(1))
             lines.append("Все места «ДОПИШИ» заполнены." if left == 0 else
-                         f"Осталось мест «ДОПИШИ»: **{left}** — дописать в `students/{nick}/pz/` и прислать командой `/пз1` / `/пз2`.")
+                         f"Осталось мест «ДОПИШИ»: **{left}** — дописать в `students/{nick}/pz/{doc}.md` и прислать командой `/{cmd}` + текст файла.")
         code = read(os.path.join(d, ".pub", "программы", "report.md"))
         if code:
             bad = len(re.findall(r"^## ❌", code, re.M))
             lines.append(f"Программы: {'❌ есть ошибки — ' if bad else '✅ '}[отчёт проверки]({blob}/{q('программы/report.md')})"
                          + ("" if bad else "; файлы для робота — `программы/Фамилия ИО-код-n.txt`"))
+    lines += send_hint(d, run, dest, files, blob)
     disk = read(os.path.join(d, ".disk")) or path
     if PUBLIC:
         lines.append(f"\n📁 Яндекс-диск: [{disk}]({PUBLIC}/{q(disk)}) · все файлы прогона: [results]({tree})")
@@ -90,6 +92,30 @@ def ok(d):
         lines.append(f"\n📁 Все файлы прогона: [results]({tree})")
     lines.append(f"<sub>запуск: {RUN}</sub>")
     comment(issue, "\n".join(lines))
+
+
+def send_hint(d, run, dest, files, blob):
+    """Что и как отправлять — по ТЗ-2026 (разд. 2.1, 2.2): тема «МПС-…», файл «Фамилия ИО Смысл-vN», в теле — группа и вариант."""
+    sv = read(os.path.join(d, ".send")).splitlines()
+    if len(sv) < 2:
+        return []
+    short, ver = sv[0], sv[1]
+    grp, rest = (dest.split("/", 1) + [""])[:2]
+    var = rest.split(" ", 1)[0]
+    body = f"в теле письма — «группа {grp}, вариант {var}»"
+    if run.startswith("СХЕМА"):
+        f = f"{short} Схема-v{ver}.png"
+        link = f"[{f}]({blob}/{q(f)})" if f in files else f"`{f}`"
+        return [f"\n✉️ **Сдать КМ-1:** на почту руководителя, тема «МПС-Схема», вложение {link}; {body}."]
+    if run.startswith("ПЗ1"):
+        return [f"\n✉️ **Сдать КМ-2:** допишите «ДОПИШИ», откройте docx → «Сохранить как PDF» → `{short} ПЗ1-v{ver}.pdf`; "
+                f"на почту руководителя, тема «МПС-ПЗ1»; {body}."]
+    out = [f"\n✉️ **Сдать ПЗ2:** docx → «Сохранить как PDF» → `{short} ПЗ2-v{ver}.pdf`; на почту ОСЭП руководителя, тема «МПС-ПЗ2»; {body}."]
+    codes = sorted(f for f in os.listdir(os.path.join(d, ".pub", "программы")) if f.endswith(".txt")) if os.path.isdir(os.path.join(d, ".pub", "программы")) else []
+    if codes:
+        out.append("✉️ **Программы** — после того как ПЗ2 рассмотрят: тема «МПС-код», вложения " +
+                   ", ".join(f"`{c}`" for c in codes) + f" (имена не менять — по ним проверяет робот); {body}.")
+    return out
 
 
 def fail(nick):
