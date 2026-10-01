@@ -116,7 +116,8 @@ def ok(d):
             ai=(f"Возьми текущий [`pz1.md`](https://raw.githubusercontent.com/{REPO}/main/students/{nick}/pz/pz1.md), заполни разделы под "
                 "подсказками «✍» своими словами от лица студента и пришли файл целиком: `/км2` + блок ```` ```pz1.md ````. "
                 if left != 0 else "Всё заполнено. ") +
-               "Перед сдачей предложи студенту пересказ общих абзацев (факты и числа не меняй).",
+               "Перед сдачей предложи студенту пересказ общих абзацев (факты и числа не меняй) — что можно и что нельзя трогать: "
+               f"[docs/finish-guide.md]({GUIDE}/docs/finish-guide.md), разд. 2.",
             nxt="**Шаг 3 · КМ-3 — напишите `/км3`**: заготовки программ, ПЗ2 и схем алгоритмов, гайд по коду.",
             warn=warn_text(left), foot=foot))
         return
@@ -158,6 +159,10 @@ def ok(d):
         ai += (f" Допиши «ДОПИШИ» в [`pz2.md`](https://raw.githubusercontent.com/{REPO}/main/students/{nick}/pz/pz2.md) "
                "и пришли `/км3` + блок ```` ```pz2.md ````.")
     ai += f" Гайд по коду — [docs/code-guide.md]({GUIDE}/docs/code-guide.md)."
+    if not bad and left == 0:
+        ai += (f"\n\n**Всё ✅ — не заканчивай сессию.** По [docs/finish-guide.md]({GUIDE}/docs/finish-guide.md) предложи студенту "
+               "продолжить: пояснения к алгоритмам ПЗ2 своими словами (`flow.*` в `pz2.md`), пересказ общих абзацев ПЗ, "
+               "разбор схемы и кода к защите, замечания руководителя по мере прихода.")
     comment(issue, card(3, f"{'❌' if bad else '✅'} Шаг 3 · КМ-3 — программы и ПЗ2 ({run})",
         files="\n".join(f"- {x}" for x in fl) + f"\n\n{where}",
         student="\n\n".join(st), ai=ai, warn=warn_text(left), extra=km3_guide(d, var),
