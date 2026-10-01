@@ -124,6 +124,7 @@ type Student struct {
 	Date      string `yaml:"date"`
 	Style     string `yaml:"style"`    // вид листа A|B|C|D; пусто — «авто» по группе и варианту
 	PZStyle   string `yaml:"pz_style"` // вид ПЗ A|B|C; пусто — по группе и варианту
+	Path      string `yaml:"-"`        // откуда загружен (students/<ник>/variant.yaml); пусто — из флагов
 }
 
 func LoadStudent(path string) (*Student, error) {
@@ -135,6 +136,7 @@ func LoadStudent(path string) (*Student, error) {
 	if err := yaml.Unmarshal(b, &s); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	s.Path = path
 	return &s, nil
 }
 

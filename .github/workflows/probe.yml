@@ -1,0 +1,100 @@
+name: Проба варианта
+
+# Посмотреть схему любого варианта без папки студента: группа, M, ФИО, стиль → results/_пробы/<группа>/<M> <ФИО>/СХЕМА-N
+# и диск MPS-SHEMAS/_пробы/…. Это НЕ сдача: КМ-2 и КМ-3 берут схемы только из папок студентов (КМ-1 по нику).
+on:
+  workflow_dispatch:
+    inputs:
+      group:
+        description: "Группа (ТЗ-2026)"
+        required: true
+        type: choice
+        options: ["А-06", "А-07", "А-08", "А-09", "А-12", "А-17", "Аэ-21"]
+      m:
+        description: "Номер варианта M (1..30)"
+        required: true
+      fio:
+        description: "Фамилия И.О. — в рамку (Разраб.)"
+        required: true
+      style:
+        description: "Стиль листа: авто — свой для группы и варианта; A (Рязанцев 2025), B (Осипова 2025), C (Сорокина 2023), D (Базарнов 2023)"
+        required: true
+        type: choice
+        default: "авто"
+        options: ["авто", "A", "B", "C", "D"]
+      checker:
+        description: "Фамилия И.О. преподавателя — в рамку (Пров.)"
+        required: false
+        default: "Михалин С.Н."
+      year:
+        description: "Год набора группы: А-12 → А-12-<год>"
+        required: false
+        default: "23"
+
+concurrency:
+  group: probe-${{ inputs.group }}-${{ inputs.m }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: KiCad 10 + poppler + шрифт ГОСТ
+        run: |
+          sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends kicad poppler-utils >/dev/null
+          mkdir -p ~/.fonts && cp fonts/*.ttf ~/.fonts/ && fc-cache -f
+      - name: Схема варианта
+        env:
+          G: ${{ inputs.group }}
+          M: ${{ inputs.m }}
+          FIO: ${{ inputs.fio }}
+          CHK: ${{ inputs.checker }}
+          Y: ${{ inputs.year }}
+          STYLE: ${{ inputs.style }}
+        run: |
+          # GitHub проверяет только «не пусто» — пробелы и мусор отсекаем тут
+          [[ "$M" =~ ^[0-9]+$ ]] && [ "$M" -ge 1 ] && [ "$M" -le 30 ] || { echo "::error::M — число 1..30, а не «$M»"; exit 1; }
+          [ -n "${FIO// /}" ] || { echo "::error::нужна Фамилия И.О."; exit 1; }
+          make try G="$G" M="$M" FIO="$FIO" CHK="${CHK:-Михалин С.Н.}" Y="${Y:-23}" STYLE="$( [ "$STYLE" = авто ] || echo "$STYLE" )"
+      - name: Результаты → results/_пробы + сводка запуска
+        if: github.ref == 'refs/heads/main'
+        env:
+          RUN_KIND: СХЕМА
+          RUN_ROOT: _пробы
+        run: find build/ -name meta.json -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          include-hidden-files: true
+          name: build
+          path: |
+            build/
+            !build/**/*.kicad_prl
+          retention-days: 7
+
+  yadisk:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build
+      - name: Результаты → Яндекс-диск (_пробы)
+        env:
+          YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: find build/ -mindepth 3 -maxdepth 3 -type d -name .pub -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py

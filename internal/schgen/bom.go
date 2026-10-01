@@ -80,6 +80,20 @@ func bomName(c *Comp, contacts int) (name, note string) {
 	return c.Value, ""
 }
 
+// bomLine — наименование и примечание с правками студента (Fixes.BOMNames / BOMNotes).
+func (s *Sheet) bomLine(c *Comp, contacts int) (name, note string) {
+	name, note = bomName(c, contacts)
+	if s.Fixes != nil {
+		if v, ok := s.Fixes.BOMNames[c.Ref]; ok {
+			name = v
+		}
+		if v, ok := s.Fixes.BOMNotes[c.Ref]; ok {
+			note = v
+		}
+	}
+	return
+}
+
 // BOM — перечень по листу. full = false — черновик для КМ-1: только микросхемы и разъёмы (ТЗ, разд. 3).
 func (s *Sheet) BOM(full bool) []BOMLine {
 	type pkg struct {
@@ -120,12 +134,12 @@ func (s *Sheet) BOM(full bool) []BOMLine {
 			i++
 			continue
 		}
-		name, note := bomName(p.c, p.contacts)
+		name, note := s.bomLine(p.c, p.contacts)
 		// подряд идущие с тем же наименованием — одной строкой
 		j := i
 		for j+1 < len(refs) && refPrefix(refs[j+1]) == prefix && refNum(refs[j+1]) == refNum(refs[j])+1 {
-			n2, _ := bomName(pk[refs[j+1]].c, pk[refs[j+1]].contacts)
-			if n2 != name {
+			n2, nt2 := s.bomLine(pk[refs[j+1]].c, pk[refs[j+1]].contacts)
+			if n2 != name || nt2 != note {
 				break
 			}
 			j++

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Загрузка результатов сборки на Яндекс-диск: <папка по ссылке>/<группа>/<вариант>/<ВИД>-N/<файлы>.
+"""Загрузка результатов сборки на Яндекс-диск: <папка по ссылке>/<группа>/<M> <ФИО>/<ВИД>-N[ по СХЕМА-K]/<файлы>.
 
     YADISK_TOKEN=… YADISK_PUBLIC=https://disk.yandex.ru/d/… scripts/yadisk_upload.py build/А-12-23/14 …
 
-Что и куда — готовит publish.sh: build/<группа>/<вариант>/.pub (содержимое прогона) и .run (имя папки: СХЕМА-N,
-ПЗ1-N или ПЗ2-N — как в ветке results). Если такая папка на диске уже есть — берётся следующий номер того же вида.
+Что и куда — готовит publish.sh: build/<группа>/<вариант>/.pub (содержимое прогона), .pubdest (папка студента)
+и .run (имя папки прогона — как в ветке results). Номер на диске занят — берётся следующий номер того же вида.
 Папку назначения задаём публичной ссылкой (YADISK_PUBLIC): скрипт сам находит её путь на диске
 владельца токена. Недостающие папки создаются, существующие файлы перезаписываются.
 Токен: OAuth-приложение с правами «Чтение всего Диска» + «Запись в любом месте на Диске» (см. README).
 """
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -109,22 +110,22 @@ def main(dirs):
         d = d.rstrip("/")
         pub = os.path.join(d, ".pub")
         try:
-            run = open(os.path.join(d, ".run")).read().strip()
+            run = open(os.path.join(d, ".run")).read().strip()        # «ПЗ1-2 по СХЕМА-3»
+            dest = open(os.path.join(d, ".pubdest")).read().strip()   # «А-12-23/17 Рязанцев И.В.» (или «_пробы/…»)
         except OSError:
-            run = ""
-        kind, _, num = run.rpartition("-")
-        if not os.path.isdir(pub) or not kind or not num.isdigit():
-            print(f"яндекс-диск: {d} — нет .pub/.run (publish.sh не отработал?), пропуск")
+            run = dest = ""
+        m = re.match(r"^(\S+?)-(\d+)(.*)$", run)
+        if not os.path.isdir(pub) or not dest or not m:
+            print(f"яндекс-диск: {d} — нет .pub/.run/.pubdest (publish.sh не отработал?), пропуск")
             continue
-        name = os.path.relpath(d, "build") if d.startswith("build/") else os.path.basename(d)
+        kind, n, rest = m.group(1), int(m.group(2)), m.group(3)
         cur = base
-        for part in name.split("/"):  # группа, затем вариант — создаём недостающие
+        for part in dest.split("/"):  # группа, «M ФИО» — создаём недостающие
             cur = f"{cur}/{part}"
             mkdir(cur)
-        n = int(num)
-        if exists(f"{cur}/{kind}-{n}"):  # номер уже занят (диск чистили руками или ветку results) — следующий
+        if exists(f"{cur}/{kind}-{n}{rest}") or last_run(cur, kind) >= n:  # номер занят (диск чистили руками) — следующий
             n = max(n, last_run(cur, kind) + 1)
-        dst = f"{cur}/{kind}-{n}"
+        dst = f"{cur}/{kind}-{n}{rest}"
         print(f"яндекс-диск: {dst} — {put_tree(pub, dst)} файлов")
 
 
@@ -134,13 +135,13 @@ def exists(path):
 
 
 def last_run(path, kind):
-    """Наибольший N среди папок «<kind>-N» в path (0 — нет)."""
+    """Наибольший N среди папок «<kind>-N…» в path (0 — нет)."""
     code, d = call("GET", "/resources", path=path, limit=1000, fields="_embedded.items.name")
-    best, pre = 0, kind + "-"
+    best = 0
     for it in (d.get("_embedded", {}).get("items", []) if code == 200 else []):
-        name = it.get("name", "")
-        if name.startswith(pre) and name[len(pre):].isdigit():
-            best = max(best, int(name[len(pre):]))
+        m = re.match(r"^" + re.escape(kind) + r"-(\d+)( |$)", it.get("name", ""))
+        if m:
+            best = max(best, int(m.group(1)))
     return best
 
 

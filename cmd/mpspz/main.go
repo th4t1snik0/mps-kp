@@ -210,7 +210,12 @@ func pz1(d *pz.Doc, p *variant.Params, st *variant.Student, sheetDir, out string
 	if err != nil {
 		die(fmt.Errorf("нет схемы PNG (%v) — сначала make student S=<ник> (нужен KiCad) или джоба КМ-1", err))
 	}
-	in := pz.PZ1{P: p, GroupFull: st.GroupFull, Checker: st.Checker, Year: time.Now().Year(), Date: st.Date, Refs: sj.Refs, BOM: sj.BOM,
+	// дата на титуле — как в рамке схемы, по которой собирается ПЗ1 (meta.json из СХЕМА-N)
+	date := st.Date
+	if mt, err := variant.LoadMeta(filepath.Join(sheetDir, "meta.json")); err == nil && mt.Date != "" {
+		date = mt.Date
+	}
+	in := pz.PZ1{P: p, GroupFull: st.GroupFull, Checker: st.Checker, Year: time.Now().Year(), Date: date, Refs: sj.Refs, BOM: sj.BOM,
 		Figs: map[string]string{}, FigW: map[string]float64{}}
 	W := float64(src.Bounds().Dx())
 	pxmm := W / sj.Paper[0]

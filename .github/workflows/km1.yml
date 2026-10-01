@@ -1,12 +1,10 @@
 name: КМ-1 схема и перечень
 
-# Два режима:
-#  - push, только если менялось то, что влияет на результат (код, таблица, символы, студенты…):
-#    тесты + сборка всех students/*/variant.yaml. Правки памяти (sessions/, notes/, docs/, *.md) CI не гоняют —
-#    раннер каждый раз чистый, и KiCad ставится заново (~1 мин), незачем тратить это на текст;
-#  - Actions → «КМ-1 схема и перечень» → Run workflow: группа, M и ФИО обязательны (без них кнопка не запустит),
-#    стиль листа — A по умолчанию; соберётся один вариант
-#    (удобно с телефона: результат в артефакте build внизу страницы запуска).
+# Схема Э3 и перечень студента — из students/<ник>/variant.yaml (единственный источник: группа, M, ФИО, стиль).
+#  - push: пересобираются только студенты, у которых в этом пуше поменялся variant.yaml (или правки схемы);
+#    правки генератора — только тесты (ничьи прогоны не плодятся);
+#  - Actions → «КМ-1 схема и перечень» → Run workflow: ник → новая СХЕМА-N в results/<группа>/<M> <ФИО>/ и на диске.
+# Посмотреть любой вариант без папки студента — джоба «Проба варианта» (пишет в _пробы/, не в сдачу).
 on:
   push:
     paths:
@@ -15,6 +13,7 @@ on:
       - "data/**"
       - "masters/**"
       - "students/*/variant.yaml"
+      - "students/*/schema/**"
       - "fonts/**"
       - "scripts/**"
       - "Makefile"
@@ -23,35 +22,13 @@ on:
       - ".github/workflows/km1.yml"
   workflow_dispatch:
     inputs:
-      group:
-        description: "Группа (ТЗ-2026)"
+      student:
+        description: "Ник студента — папка в students/ (make nick G=А-12 FIO=\"Рязанцев И.В.\" → a12_ryazantsev_iv)"
         required: true
-        type: choice
-        options: ["А-06", "А-07", "А-08", "А-09", "А-12", "А-17", "Аэ-21"]
-      m:
-        description: "Номер варианта M (1..30)"
-        required: true
-      fio:
-        description: "Фамилия И.О. студента — в рамку (Разраб.), например «Рязанцев И.В.»"
-        required: true
-      checker:
-        description: "Фамилия И.О. преподавателя — в рамку (Пров.)"
-        required: false
-        default: "Михалин С.Н."
-      style:
-        description: "Стиль листа: авто — свой для группы и варианта (одинаковый при любом прогоне); A (как Рязанцев 2025), B (Осипова 2025), C (Сорокина 2023), D (Базарнов 2023)"
-        required: true
-        type: choice
-        default: "авто"
-        options: ["авто", "A", "B", "C", "D"]
-      year:
-        description: "Год набора группы: А-12 → А-12-<год>"
-        required: false
-        default: "23"
 
 # новый пуш отменяет ещё идущий прогон той же ветки; запуски Run workflow с разными вариантами не мешают друг другу
 concurrency:
-  group: build-${{ github.ref }}-${{ github.event_name }}-${{ inputs.group }}-${{ inputs.m }}
+  group: km1-${{ github.ref }}-${{ github.event_name }}-${{ inputs.student }}
   cancel-in-progress: true
 
 permissions:
@@ -60,12 +37,29 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    outputs:
+      list: ${{ steps.who.outputs.list }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # для списка изменившихся студентов
 
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
+
+      - name: Кого собирать
+        id: who
+        env:
+          ONLY: ${{ inputs.student }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            [ -f "students/$ONLY/variant.yaml" ] || { echo "::error::нет students/$ONLY/variant.yaml — ник это имя папки (make nick G=… FIO=…)"; exit 1; }
+            list="$ONLY"
+          else list="$(scripts/changed_students.sh variant.yaml 'schema/*' | tr '\n' ' ')"; fi
+          echo "студенты: ${list:-нет (только тесты)}"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
 
       - name: KiCad 10 + poppler + шрифт ГОСТ
         run: |
@@ -77,37 +71,22 @@ jobs:
       - name: Тесты
         run: go test ./...
 
-      - name: Один вариант (Run workflow)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Схемы студентов
+        if: steps.who.outputs.list != ''
         env:
-          G: ${{ inputs.group }}
-          M: ${{ inputs.m }}
-          FIO: ${{ inputs.fio }}
-          CHK: ${{ inputs.checker }}
-          Y: ${{ inputs.year }}
-          STYLE: ${{ inputs.style }}
-        run: |
-          # GitHub проверяет только «не пусто» — пробелы и мусор отсекаем тут
-          [[ "$M" =~ ^[0-9]+$ ]] && [ "$M" -ge 1 ] && [ "$M" -le 30 ] || { echo "::error::M — число 1..30, а не «$M»"; exit 1; }
-          [ -n "${FIO// /}" ] || { echo "::error::нужна Фамилия И.О."; exit 1; }
-          make try G="$G" M="$M" FIO="$FIO" CHK="${CHK:-Михалин С.Н.}" Y="${Y:-23}" STYLE="$( [ "$STYLE" = авто ] || echo "$STYLE" )"
-
-      - name: Все студенты
-        if: github.event_name == 'push'
-        run: |
-          for f in students/*/variant.yaml; do
-            make student S="$(basename "$(dirname "$f")")"
-          done
+          LIST: ${{ steps.who.outputs.list }}
+        run: for s in $LIST; do make student S="$s"; done
 
       - name: Результаты → ветка results + сводка запуска
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.who.outputs.list != ''
         env:
           RUN_KIND: СХЕМА   # папка СХЕМА-N
-        run: find build/ -name params.md -exec dirname {} \; | tr '\n' '\0' | xargs -0 scripts/publish.sh
+        run: find build/ -name meta.json -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
 
       - uses: actions/upload-artifact@v4
+        if: steps.who.outputs.list != ''
         with:
-          include-hidden-files: true   # build/…/.pub и .run — готовая папка прогона для диска
+          include-hidden-files: true   # build/…/.pub, .run, .pubdest — готовая папка прогона для диска
           name: build
           path: |
             build/
@@ -118,7 +97,7 @@ jobs:
   # (с ожиданием блокировок, когда КМ-1/2/3 пишут одновременно) не задерживает её.
   yadisk:
     needs: build
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.build.outputs.list != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     continue-on-error: true

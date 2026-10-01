@@ -27,6 +27,10 @@ test:
 student: bin/mpsgen
 	./bin/mpsgen -table $(TABLE) -year $(Y) -student students/$(S)/variant.yaml -style "$(STYLE)" -render
 
+# замечание руководителя → students/<ник>/remarks.md: make remark S=<ник> KM=1 TEXT="…" [BY="Михалин С.Н."]
+remark: bin/mpsgen
+	@./bin/mpsgen -student students/$(S)/variant.yaml -remark "$(TEXT)" -km "$(KM)" -by "$(BY)"
+
 nick: bin/mpsgen
 	@./bin/mpsgen -nick -group "$(G)" -name "$(FIO)"
 
@@ -68,4 +72,4 @@ KICAD_SYMBOLS ?= /Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols
 lib:
 	go run ./cmd/mpslib -kicad $(KICAD_SYMBOLS)
 
-.PHONY: all test student try lib code code-init code-try pz1 pz1-init pz2 pz2-init
+.PHONY: all test student try lib nick remark code code-init code-try pz1 pz1-init pz2 pz2-init

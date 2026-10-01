@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"mpskp/internal/render"
 	"mpskp/internal/schgen"
 	"mpskp/internal/variant"
@@ -36,6 +38,11 @@ func main() {
 		doRend = flag.Bool("render", false, "после генерации запустить scripts/render.sh (PDF, PNG, ERC)")
 		style  = flag.String("style", "", "стиль листа A|B|C|D; пусто или auto — собирается из признаков по группе и варианту (internal/schgen/style.go)")
 		nick   = flag.Bool("nick", false, "только напечатать ник студента по -group и -name (имя папки students/<ник>/)")
+		info   = flag.Bool("info", false, "только напечатать JSON {nick, dest, build} для -student (куда класть результаты)")
+		verify = flag.String("verify", "", "сверить meta.json готовой схемы с -student: расходится — код 3 и что именно")
+		remark = flag.String("remark", "", "записать замечание руководителя в students/<ник>/remarks.md (с -student, -km, -by)")
+		km     = flag.String("km", "", "к какому КМ замечание: 1…4 (для -remark)")
+		by     = flag.String("by", "", "кто сделал замечание (для -remark; пусто — проверяющий из variant.yaml)")
 		plain  = flag.Bool("plain", false, "без «почерка» (сдвигов и вариаций шрифтов) — как эталон")
 		lib    = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
 		wks    = flag.String("wks", "masters/gost_ramka.kicad_wks", "рамка ГОСТ")
@@ -48,6 +55,43 @@ func main() {
 			os.Exit(2)
 		}
 		fmt.Println(n)
+		return
+	}
+	if *remark != "" {
+		st, err := loadStudent(*stud, *group, *m, *name, *chk, *style, *year)
+		if err == nil && st.Path == "" {
+			err = fmt.Errorf("нужен -student students/<ник>/variant.yaml")
+		}
+		if err == nil {
+			err = addRemark(st, *km, *by, *remark, time.Now())
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ошибка:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *info || *verify != "" {
+		st, err := loadStudent(*stud, *group, *m, *name, *chk, *style, *year)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ошибка:", err)
+			os.Exit(1)
+		}
+		if *info {
+			js, _ := json.Marshal(map[string]string{"nick": variant.Nick(st.Group, st.Name), "dest": st.Dest(), "build": filepath.Join(*root, st.Dir())})
+			fmt.Println(string(js))
+			return
+		}
+		mt, err := variant.LoadMeta(*verify)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "нет данных схемы:", err)
+			os.Exit(1)
+		}
+		if d := mt.Stale(st.Meta("")); len(d) > 0 {
+			fmt.Fprintln(os.Stderr, "схема собрана с другими данными, чем сейчас в variant.yaml:\n  "+strings.Join(d, "\n  ")+
+				"\nпрогони «КМ-1 схема и перечень» для этого ника — будет новая СХЕМА-N")
+			os.Exit(3)
+		}
 		return
 	}
 	plainSheet = *plain
@@ -63,15 +107,13 @@ func main() {
 	}
 }
 
-func run(tablePath, studPath, group string, m int, name, checker, style, year, root, out, libPath, wksPath string) (string, error) {
-	tb, err := variant.LoadTable(tablePath)
-	if err != nil {
-		return "", err
-	}
+// loadStudent — студент из variant.yaml или из флагов (-group/-m/-name), с умолчаниями.
+func loadStudent(studPath, group string, m int, name, checker, style, year string) (*variant.Student, error) {
 	var st *variant.Student
 	if studPath != "" {
+		var err error
 		if st, err = variant.LoadStudent(studPath); err != nil {
-			return "", err
+			return nil, err
 		}
 	} else {
 		st = &variant.Student{Group: group, M: m}
@@ -86,6 +128,18 @@ func run(tablePath, studPath, group string, m int, name, checker, style, year, r
 		st.Style = style
 	}
 	st.Defaults(year, time.Now())
+	return st, nil
+}
+
+func run(tablePath, studPath, group string, m int, name, checker, style, year, root, out, libPath, wksPath string) (string, error) {
+	tb, err := variant.LoadTable(tablePath)
+	if err != nil {
+		return "", err
+	}
+	st, err := loadStudent(studPath, group, m, name, checker, style, year)
+	if err != nil {
+		return "", err
+	}
 	if out == "" {
 		out = filepath.Join(root, st.Dir())
 	}
@@ -140,8 +194,23 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 		j := schgen.MakeJitter(fmt.Sprintf("%s|%d", st.GroupFull, p.M), p.Rows)
 		v.Jitter = &j
 	}
+	// правки по замечаниям: students/<ник>/schema/fixes.yaml
+	if fp := st.FixesPath(); fp != "" {
+		if b, err := os.ReadFile(fp); err == nil {
+			var fx schgen.Fixes
+			if err := yaml.Unmarshal(b, &fx); err != nil {
+				return fmt.Errorf("%s: %w", fp, err)
+			}
+			v.Fixes = &fx
+			fmt.Println("  правки схемы:", fp)
+		}
+	}
 	sh := schgen.Build(lib, v, fmt.Sprintf("%s-%d", p.Group, p.M))
+	if len(sh.FixErrs) > 0 {
+		return fmt.Errorf("%s:\n  %s", st.FixesPath(), strings.Join(sh.FixErrs, "\n  "))
+	}
 	regions := sh.Regions() // до String(): тот сдвигает лист и обнуляет сдвиг
+	jit := sh.J
 	writes := map[string]string{
 		"schematic.kicad_sch": sh.String(),
 		"schematic.kicad_pro": schgen.Project,
@@ -176,8 +245,12 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 	for role, c := range sh.Roles {
 		refs[role] = [2]string{c.Ref, c.Value}
 	}
-	sj, _ := json.MarshalIndent(map[string]any{"regions": regions, "refs": refs, "bom": full, "paper_mm": [2]float64{420, 297}}, "", "  ")
+	// style и jitter — какой вид листа вышел (для правок move в fixes.yaml видно, где что стоит)
+	sj, _ := json.MarshalIndent(map[string]any{"regions": regions, "refs": refs, "bom": full, "paper_mm": [2]float64{420, 297},
+		"style": v.Style, "jitter": jit}, "", "  ")
 	writes["sheet.json"] = string(sj)
+	mj, _ := json.MarshalIndent(st.Meta(v.Style.Name), "", "  ")
+	writes["meta.json"] = string(mj) + "\n"
 	writes["perechen.md"] = schgen.BOMMarkdown(full, "Перечень элементов — "+peLine) + "\n" +
 		schgen.BOMMarkdown(km1, "Черновик для КМ-1 (только микросхемы и разъёмы)")
 	for name, body := range writes {
@@ -188,4 +261,37 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 	ind := map[bool]string{true: "общий анод", false: "общий катод"}[v.Anode]
 	fmt.Printf("  схема: %s (стиль %s, клавиатура %dx%d, %s)\n", filepath.Join(out, "schematic.kicad_sch"), v.Style.Name, p.Cols, p.Rows, ind)
 	return nil
+}
+
+// addRemark дописывает замечание руководителя в students/<ник>/remarks.md (файл создаётся с шапкой: ФИО, группа, вариант).
+func addRemark(st *variant.Student, km, by, text string, now time.Time) error {
+	path := filepath.Join(filepath.Dir(st.Path), "remarks.md")
+	if by == "" {
+		by = st.Checker
+	}
+	km = strings.TrimPrefix(strings.TrimSpace(km), "КМ-")
+	var b strings.Builder
+	if _, err := os.Stat(path); err != nil {
+		fmt.Fprintf(&b, "# Замечания руководителя — %s, %s, вариант %d\n\n", st.Name, st.GroupFull, st.M)
+		b.WriteString("Записи — сверху вниз по дате. Как работать: AGENTS.md, раздел «Замечания руководителя».\n")
+	}
+	kmS := "КМ-?"
+	if km != "" {
+		kmS = "КМ-" + km
+	}
+	fmt.Fprintf(&b, "\n## %s — %s — %s\n\n", now.Format("2006-01-02"), kmS, by)
+	fmt.Fprintf(&b, "- **Студент:** %s, %s, вариант %d\n", st.Name, st.GroupFull, st.M)
+	fmt.Fprintf(&b, "- **Замечание:** %s\n", strings.TrimSpace(text))
+	b.WriteString("- **Что сделали:** — (дописать: что поправили и где — schema/fixes.yaml, текст ПЗ, код; какой прогон: СХЕМА-N / ПЗ1-K / ПЗ2-K)\n")
+	b.WriteString("- **Статус:** открыто\n")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(b.String())
+	if err == nil {
+		fmt.Println("записано:", path)
+	}
+	return err
 }

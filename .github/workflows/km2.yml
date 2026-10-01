@@ -2,26 +2,29 @@ name: КМ-2 ПЗ1
 
 # ПЗ1 «Аппаратная часть» в docx: генерируемое (структурная и функциональная схемы, фрагменты Э3 по узлам, расчёты
 # с номиналами из перечня, таблицы выводов/адресов/кодов, временные диаграммы, перечень, Э3 в приложении) + текст студента
-# из students/<ник>/pz/pz1.md (места «ДОПИШИ»). Схема строится тут же (KiCad) — ПЗ1 всегда соответствует схеме.
-#  - push: при изменении текста ПЗ1, варианта студента или генераторов;
-#  - Actions → «КМ-2 ПЗ1» → Run workflow: ник (пусто — все студенты).
+# из students/<ник>/pz/pz1.md (места «ДОПИШИ»).
+# Схема НЕ строится заново: берётся сданная СХЕМА-N из results (scripts/schema_fetch.sh) — рисунки, перечень и дата
+# в ПЗ1 те же, что в схеме. Папка прогона — «ПЗ1-K по СХЕМА-N». Схемы нет или variant.yaml с тех пор поменялся — ошибка
+# с подсказкой «прогони КМ-1». KiCad не нужен (~1 мин).
+#  - push: только студенты, у которых в этом пуше поменялся pz/pz1.md; правки генератора — только тесты;
+#  - Actions → «КМ-2 ПЗ1» → Run workflow: ник (+ номер схемы, пусто — последняя).
 on:
   push:
     paths:
-      - "students/*/variant.yaml"
       - "students/*/pz/pz1.md"
       - "cmd/mpspz/**"
-      - "cmd/mpsgen/**"
       - "internal/pz/**"
       - "internal/diag/**"
-      - "internal/schgen/**"
       - "internal/variant/**"
-      - "data/**"
+      - "scripts/**"
       - ".github/workflows/km2.yml"
   workflow_dispatch:
     inputs:
       student:
-        description: "Ник студента (папка в students/); пусто — все"
+        description: "Ник студента — папка в students/ (make nick G=А-12 FIO=\"Рязанцев И.В.\" → a12_ryazantsev_iv)"
+        required: true
+      schema:
+        description: "Номер схемы СХЕМА-N, по которой собирать ПЗ1 (пусто — последняя)"
         required: false
         default: ""
 
@@ -35,53 +38,81 @@ permissions:
 jobs:
   pz1:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 6
+    outputs:
+      list: ${{ steps.who.outputs.list }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # для списка изменившихся студентов
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
-      - name: KiCad 10, poppler, pandoc 3.11, шрифты
+
+      - name: Кого собирать
+        id: who
+        env:
+          ONLY: ${{ inputs.student }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends kicad poppler-utils >/dev/null
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then list="$ONLY"
+          else list="$(scripts/changed_students.sh pz/pz1.md | tr '\n' ' ')"; fi
+          echo "студенты: ${list:-нет (только тесты)}"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+      - name: Тесты ПЗ
+        run: go test ./internal/pz/ ./internal/variant/
+
+      - name: pandoc 3.11, шрифты
+        if: steps.who.outputs.list != ''
+        run: |
           curl -sSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.11/pandoc-3.11-1-amd64.deb
           sudo dpkg -i /tmp/pandoc.deb >/dev/null
           mkdir -p ~/.fonts && cp fonts/*.ttf ~/.fonts/ && fc-cache -f
-      - name: LibreOffice — номера страниц в содержании (не поставился — содержание без номеров, Word допишет)
+
+      - name: LibreOffice — номера страниц и PDF «просмотр» (не поставился — без них, Word допишет)
+        if: steps.who.outputs.list != ''
         timeout-minutes: 3
         continue-on-error: true
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libreoffice-writer-nogui poppler-utils fonts-liberation >/dev/null
 
-      - name: Схема и ПЗ1
+      - name: ПЗ1 по сданной схеме
+        if: steps.who.outputs.list != ''
         env:
-          ONLY: ${{ inputs.student }}
+          LIST: ${{ steps.who.outputs.list }}
+          SCHEMA: ${{ inputs.schema }}
         run: |
-          go build -o bin/mpspz ./cmd/mpspz
-          for f in students/*/variant.yaml; do
-            s="$(basename "$(dirname "$f")")"
-            [ -n "$ONLY" ] && [ "$s" != "$ONLY" ] && continue
+          go build -o bin/mpsgen ./cmd/mpsgen && go build -o bin/mpspz ./cmd/mpspz
+          status=0
+          for s in $LIST; do
             echo "::group::$s"
-            make student S="$s" >/dev/null && bin/mpspz -student "$f" -doc pz1 || echo "::warning::ПЗ1 для $s не собралась"
+            if scripts/schema_fetch.sh "$s" "$SCHEMA"; then
+              bin/mpspz -student "students/$s/variant.yaml" -doc pz1 || { echo "::error::ПЗ1 для $s не собралась"; status=1; }
+            else status=1; fi
             echo "::endgroup::"
           done
+          exit $status
+
       - name: Результаты → ветка results
-        if: github.ref == 'refs/heads/main'
+        if: always() && github.ref == 'refs/heads/main' && steps.who.outputs.list != ''
         env:
-          RUN_KIND: ПЗ1   # папка ПЗ1-N
-        run: find build/ -mindepth 3 -maxdepth 3 -type d -name pz1 -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
-      - run: touch build/.root   # корень артефакта — build/ (иначе при одном студенте срежется префикс <группа>/<M>)
+          RUN_KIND: ПЗ1   # папка «ПЗ1-K по СХЕМА-N»
+        run: find build/ -name .dest -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
+
+      - run: mkdir -p build && touch build/.root   # корень артефакта — build/ (иначе срежется префикс <группа>/<M>)
+        if: always()
       - uses: actions/upload-artifact@v4
+        if: always() && steps.who.outputs.list != ''
         with:
-          include-hidden-files: true   # build/…/.pub и .run — готовая папка прогона для диска
+          include-hidden-files: true   # build/…/.pub, .run, .pubdest — готовая папка прогона для диска
           name: pz1
           path: |
             build/**/pz1/
             build/**/.pub/
             build/**/.run
+            build/**/.pubdest
             build/.root
           retention-days: 7
 
@@ -89,7 +120,7 @@ jobs:
   # (с ожиданием блокировок, когда КМ-1/2/3 пишут одновременно) не задерживает её.
   yadisk:
     needs: pz1
-    if: github.ref == 'refs/heads/main'
+    if: always() && github.ref == 'refs/heads/main' && needs.pz1.outputs.list != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     continue-on-error: true

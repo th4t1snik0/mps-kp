@@ -53,9 +53,9 @@ func MakeJitter(seed string, rows int) Jitter {
 	j.LabelItalic = r.Intn(2) == 1
 	// сдвиги отдельных блоков: «Примечание» правее не дальше, чем позволяет общий сдвиг (иначе вылезет за рамку)
 	j.NoteDX = float64(r.Intn(int((33-j.ShiftX)/2.54)+1)) * 2.54
-	j.NoteDY = float64(r.Intn(4)) * 2.54 // 0…7,62 вниз: выше — земля регистра индикатора, ниже — штамп
-	j.DecDX = float64(r.Intn(9)-2) * 2.54  // −5,08…+15,24
-	j.DecDY = float64(r.Intn(9)) * 2.54    // 0…20,32
-	j.PwrDY = float64(r.Intn(3)-1) * 2.54  // −2,54…+2,54
+	j.NoteDY = float64(r.Intn(4)) * 2.54  // 0…7,62 вниз: выше — земля регистра индикатора, ниже — штамп
+	j.DecDX = float64(r.Intn(9)-2) * 2.54 // −5,08…+15,24
+	j.DecDY = float64(r.Intn(9)) * 2.54   // 0…20,32
+	j.PwrDY = float64(r.Intn(3)-1) * 2.54 // −2,54…+2,54
 	return j
 }

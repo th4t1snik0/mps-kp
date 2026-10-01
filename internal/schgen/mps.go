@@ -20,6 +20,7 @@ type Variant struct {
 	Filter     string  // номинал фильтров на корпус: «68 н» (2025) / «33 н» (2026)
 	Style      Style   // вид листа (A–D), см. style.go
 	Jitter     *Jitter // «почерк» (jitter.go); nil — Plain
+	Fixes      *Fixes  // правки студента по замечаниям (fixes.go); nil — нет
 	Date       string
 	Student    string
 	Checker    string
@@ -171,6 +172,10 @@ func Build(lib *Lib, v Variant, seed string) *Sheet {
 	if v.Jitter != nil {
 		b.Sheet.J = *v.Jitter
 	}
+	if v.Fixes != nil {
+		b.Sheet.Fixes = v.Fixes
+		b.FixErrs = append(b.FixErrs, v.Fixes.applyMoves(&b.Sheet.J)...)
+	}
 	if b.v.Style.Name == "" {
 		b.v.Style = Styles["A"]
 	}
@@ -197,6 +202,9 @@ func Build(lib *Lib, v Variant, seed string) *Sheet {
 	}
 	b.buses()
 	b.Renumber()
+	if v.Fixes != nil {
+		b.FixErrs = append(b.FixErrs, b.applyValues(v.Fixes)...)
+	}
 	b.notes()
 	return b.Sheet
 }
@@ -824,6 +832,11 @@ func (b *builder) notes() {
 		fmt.Sprintf("2. %s — вывод 7 на GND, вывод 14 к +5 В.", joinRefs(nor, and, or)),
 		fmt.Sprintf("3. Неиспользуемые входы к GND: %s выв. 8, 9, 11, 12; %s выв. %s; %s выв. 4, 5, 9, 10, 12, 13.", nor, and, andUnused, or),
 		fmt.Sprintf("4. %s, %s устанавливать рядом с ZQ1.", b.Roles["cX1"].Ref, b.Roles["cX2"].Ref),
+	}
+	if b.Fixes != nil {
+		for _, l := range b.Fixes.NoteAdd {
+			lines = append(lines, fmt.Sprintf("%d. %s", len(lines), strings.TrimSpace(l)))
+		}
 	}
 	b.Text(strings.Join(lines, "\n"), Pt{229.87 + b.Sheet.J.NoteDX, 206.375 + b.Sheet.J.NoteDY}, b.Sheet.J.NoteFont)
 }

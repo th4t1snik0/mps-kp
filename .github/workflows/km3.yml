@@ -1,35 +1,31 @@
 name: КМ-3 программы и ПЗ2
 
-# Проверка программ КМ-3 (students/<ник>/code/prog{1,2,3}.a51) — только Go: свой ассемблер (asm51) и эмулятор 8051 (emu51),
-# ничего не ставится, прогон ~1 мин. Сверка ассемблера с MCU 8051 IDE — отдельная джоба mide, по кнопке (галочка в Run workflow).
-#  - push: если менялись программы студентов, чекер, шаблоны или таблица;
-#  - Actions → code → Run workflow: можно указать ник (пусто — все студенты).
-# Что делает: тесты чекера на эталонах; mpscode по каждому студенту;
-# результаты (файлы для робота «Фамилия ИО-код-n.txt», отчёт) — в ветку results (<группа>/<M>/code/), на Яндекс-диск и в артефакт.
+# Проверка программ КМ-3 (students/<ник>/code/prog{1,2,3}.a51) и ПЗ2 — только Go + pandoc (+ LibreOffice для номеров
+# страниц), ~1 мин. Своё: ассемблер asm51 и эмулятор 8051 emu51. Сверка с MCU 8051 IDE — джоба mide, по галочке.
+#  - push: пересобираются только студенты, у которых в этом пуше поменялись code/, pz/pz2.md или pz/flow/;
+#    правки генератора — только тесты (ничьи прогоны не плодятся);
+#  - Actions → «КМ-3 программы и ПЗ2» → Run workflow: ник (+ номер схемы, пусто — последняя).
+# Схема берётся готовая из results (СХЕМА-N студента, scripts/schema_fetch.sh): папка прогона — «ПЗ2-K по СХЕМА-N».
+# Схемы ещё нет — код всё равно проверяется, папка без «по СХЕМА-N» (и предупреждение).
 on:
   push:
     paths:
-      - "students/*/variant.yaml"
       - "students/*/code/**"
       - "students/*/pz/pz2.md"
       - "students/*/pz/flow/**"
       - "cmd/mpspz/**"
-      - "internal/pz/**"
-      - "internal/flow/**"
       - "cmd/mpscode/**"
-      - "internal/asm51/**"
-      - "internal/emu51/**"
-      - "internal/codecheck/**"
-      - "internal/variant/**"
-      - "internal/render/**"
+      - "internal/**"
       - "data/**"
-      - "scripts/mide_crosscheck.sh"
-      - "scripts/publish.sh"
+      - "scripts/**"
       - ".github/workflows/km3.yml"
   workflow_dispatch:
     inputs:
       student:
-        description: "Ник студента (папка в students/); пусто — все"
+        description: "Ник студента — папка в students/ (make nick G=А-12 FIO=\"Рязанцев И.В.\" → a12_ryazantsev_iv)"
+        required: true
+      schema:
+        description: "Номер схемы СХЕМА-N, по которой собирать (пусто — последняя)"
         required: false
         default: ""
       mide:
@@ -48,86 +44,90 @@ jobs:
   code:
     runs-on: ubuntu-24.04
     timeout-minutes: 6
+    outputs:
+      list: ${{ steps.who.outputs.list }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # для списка изменившихся студентов
 
       - uses: actions/setup-go@v5
         with:
           go-version: "1.23"
 
+      - name: Кого собирать
+        id: who
+        env:
+          ONLY: ${{ inputs.student }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then list="$ONLY"
+          else list="$(scripts/changed_students.sh 'code/*' pz/pz2.md 'pz/flow/*' | tr '\n' ' ')"; fi
+          echo "студенты: ${list:-нет (только тесты)}"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+      - name: Тесты ассемблера, эмулятора, чекера и ПЗ (эталоны проходят, поломки падают)
+        run: go test ./internal/asm51/ ./internal/emu51/ ./internal/codecheck/ ./internal/flow/ ./internal/pz/ ./internal/variant/
+
       - name: pandoc 3.11 (docx; в PDF студент сохраняет сам, когда допишет)
+        if: steps.who.outputs.list != ''
         run: |
           curl -sSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.11/pandoc-3.11-1-amd64.deb
           sudo dpkg -i /tmp/pandoc.deb >/dev/null
 
-      - name: LibreOffice — номера страниц в содержании (не поставился — содержание без номеров, Word допишет)
+      - name: LibreOffice — номера страниц и PDF «просмотр» (не поставился — без них, Word допишет)
+        if: steps.who.outputs.list != ''
         timeout-minutes: 3
         continue-on-error: true
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libreoffice-writer-nogui poppler-utils fonts-liberation >/dev/null
 
-      - name: Тесты ассемблера, эмулятора, чекера и ПЗ (эталоны проходят, поломки падают)
-        run: go test ./internal/asm51/ ./internal/emu51/ ./internal/codecheck/ ./internal/flow/ ./internal/pz/
-
-      - name: Сборка mpscode
-        run: go build -o bin/mpscode ./cmd/mpscode
-
-      - name: Программы студентов
+      - name: Программы и ПЗ2
         id: students
+        if: steps.who.outputs.list != ''
         env:
-          ONLY: ${{ inputs.student }}
+          LIST: ${{ steps.who.outputs.list }}
+          SCHEMA: ${{ inputs.schema }}
         run: |
+          go build -o bin/mpsgen ./cmd/mpsgen && go build -o bin/mpscode ./cmd/mpscode && go build -o bin/mpspz ./cmd/mpspz
           status=0
-          for f in students/*/variant.yaml; do
-            s="$(basename "$(dirname "$f")")"
-            [ -n "$ONLY" ] && [ "$s" != "$ONLY" ] && continue
-            ls students/"$s"/code/prog[123].a51 >/dev/null 2>&1 || continue
+          for s in $LIST; do
             echo "::group::$s"
+            f="students/$s/variant.yaml"
+            if ! ls students/"$s"/code/prog[123].a51 >/dev/null 2>&1; then echo "::warning::$s: нет students/$s/code/prog*.a51 — make code-init S=$s"; echo "::endgroup::"; continue; fi
+            scripts/schema_fetch.sh "$s" "$SCHEMA" --optional || { status=1; echo "::endgroup::"; continue; }
             bin/mpscode -student "$f" || status=1
+            bin/mpspz -student "$f" -doc pz2 || echo "::warning::ПЗ2 для $s не собралась"
             echo "::endgroup::"
           done
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
-      - name: ПЗ2 (у кого есть код)
-        env:
-          ONLY: ${{ inputs.student }}
-        run: |
-          go build -o bin/mpspz ./cmd/mpspz
-          for f in students/*/variant.yaml; do
-            s="$(basename "$(dirname "$f")")"
-            [ -n "$ONLY" ] && [ "$s" != "$ONLY" ] && continue
-            ls students/"$s"/code/prog[123].a51 >/dev/null 2>&1 || continue
-            echo "::group::$s"
-            bin/mpspz -student "$f" -doc pz2 || echo "::warning::ПЗ2 для $s не собралась"
-            echo "::endgroup::"
-          done
-          ls build/*/*/pz2/ 2>/dev/null || true
-
       - name: Результаты → ветка results
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.who.outputs.list != ''
         env:
           SUMMARY: "0"   # сводку уже написал mpscode
-          RUN_KIND: ПЗ2   # папка ПЗ2-N: записка ПЗ2 + программы/
-        run: find build/ -mindepth 3 -maxdepth 3 -type d \( -name code -o -name pz2 \) -exec dirname {} \; | sort -u | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
+          RUN_KIND: ПЗ2   # папка «ПЗ2-K по СХЕМА-N»: записка ПЗ2 + программы/
+        run: find build/ -name .dest -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
 
-      - run: touch build/.root   # корень артефакта — build/ (иначе при одном студенте срежется префикс <группа>/<M>)
+      - run: mkdir -p build && touch build/.root   # корень артефакта — build/ (иначе срежется префикс <группа>/<M>)
       - uses: actions/upload-artifact@v4
         with:
-          include-hidden-files: true   # build/…/.pub и .run — готовая папка прогона для диска
+          include-hidden-files: true   # build/…/.pub, .run, .pubdest — готовая папка прогона для диска
           name: code
           path: |
             build/**/code/
             build/**/pz2/
             build/**/.pub/
             build/**/.run
+            build/**/.pubdest
             build/.root
           retention-days: 7
 
       - name: Итог по студентам
-        if: steps.students.outputs.status != '0'
+        if: steps.students.outputs.status == '1'
         run: |
-          echo "::error::в программах студентов есть ❌ — отчёт на странице запуска (Summary) и в build/<группа>/<M>/code/report.md"
+          echo "::error::в программах студентов есть ❌ (или нет схемы) — отчёт на странице запуска (Summary) и в build/<группа>/<M>/code/report.md"
           exit 1
 
   mide:
@@ -160,7 +160,7 @@ jobs:
   # (с ожиданием блокировок, когда КМ-1/2/3 пишут одновременно) не задерживает её.
   yadisk:
     needs: code
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.code.outputs.list != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     continue-on-error: true
