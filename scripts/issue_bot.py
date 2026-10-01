@@ -47,23 +47,7 @@ def run(*cmd):
 
 # ---------------------------------------------------------------- карточки ответов
 
-STEPS = ["КМ-1 · схема", "КМ-2 · ПЗ1", "КМ-3 · программы и ПЗ2"]
-
-
-def progress(cur):
-    """Строка «✅ КМ-1 → ▶️ КМ-2 → ⬜ КМ-3»: шаги до cur — сделаны, cur — текущий."""
-    return " → ".join(f"{'✅' if i < cur else '▶️' if i == cur else '⬜'} {s}" for i, s in enumerate(STEPS, 1))
-
-
-def card(step, title, files="", student="", ai="", nxt=""):
-    """Ответ бота: заголовок, ход работы, 📎 файлы, 🧑‍🎓 студенту, 🤖 нейронке, ➡️ дальше."""
-    parts = [f"## {title}"]
-    if step:
-        parts.append(f"<sub>{progress(step)}</sub>")
-    for head, body in (("📎 Файлы", files), ("🧑‍🎓 Студенту", student), ("🤖 Нейронке", ai), ("➡️ Дальше", nxt)):
-        if body:
-            parts.append(f"**{head}**\n\n{body}")
-    return "\n\n".join(parts)
+from issue_card import card  # noqa: E402 — общий вид карточек с issue_notify.py
 
 
 def raw(nick, rel):
