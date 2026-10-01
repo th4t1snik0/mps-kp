@@ -38,7 +38,7 @@ func numPages() string {
 // ячейки той же таблицы, выдвинутой на левое поле (8 мм от края листа).
 
 const (
-	titleH    = 255.0 // высота таблицы титула, мм (поле страницы — 257: под таблицей помещается абзац разрыва)
+	titleH    = 235.0 // высота таблицы титула, мм (поле страницы — 257): запас на разные просмотрщики
 	textW     = 175.0 // ширина поля текста: 210 − 25 − 10
 	leftField = 25.0  // левое поле
 )
@@ -128,7 +128,7 @@ type TitleInfo struct {
 // «Москва, год» внизу, слева внизу — боковые графы. Строки боковых граф сверху вниз: 35/25/25/35/25 мм.
 func (d *Doc) Title(t TitleInfo) {
 	rows := []titleRow{
-		{h: 72},
+		{h: 52}, // титул ≈ 235 мм при поле 257: запас — просмотрщики рисуют таблицу чуть выше, хвост уезжал на 2-й лист
 		{h: 14, body: tp("center", 0, 0, false, 14, run("Проектирование микропроцессорной системы на базе МК i8051"))},
 		{h: 14, body: tp("center", 0, 0, true, 14, run(t.Doc))},
 		{h: 10, body: tp("center", 0, 0, false, 12, run("Листов ")+numPages())},
@@ -174,7 +174,7 @@ func (d *Doc) TitleA(t TitleInfo, date string) {
 		{h: 20},
 		{h: 32, body: lab(0, "Выполнил:", t.FIO) + lab(1, "Группа:", t.Group) + lab(1, "Вариант:", fmt.Sprint(t.M)) + lab(1, "Дата:", date)},
 		{h: 16, body: lab(0, "Проверил:", t.Checker) + lab(1, "Дата:", "")},
-		{h: 63, valign: "bottom", body: tp("center", 0, 0, false, 14, run(fmt.Sprintf("Москва, %d", t.Year)))},
+		{h: 43, valign: "bottom", body: tp("center", 0, 0, false, 14, run(fmt.Sprintf("Москва, %d", t.Year)))}, // ≈ 235 мм — с запасом
 	}
 	d.w("\n```{=openxml}\n%s\n```\n\n", titleTable(rows, false))
 }
