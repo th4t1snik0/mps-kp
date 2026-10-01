@@ -1,6 +1,7 @@
 package schgen
 
-// Project — schematic.kicad_pro рядом со схемой: настройки ERC и нумерация частей
+// Project — schematic.kicad_pro рядом со схемой: рамка ГОСТ (ramka.kicad_wks рядом — KiCad подхватит её при открытии проекта),
+// настройки ERC и нумерация частей
 // корпуса «DD1.1, DD1.2» (разделитель «.», первая часть «1») вместо «DD1A».
 // Отключено то, что для учебной схемы не ошибка:
 //   - lib_symbol_issues / footprint_link_issues — символы встроены в схему, библиотека mps не подключена;
@@ -20,6 +21,7 @@ const Project = `{
     }
   },
   "schematic": {
+    "page_layout_descr_file": "ramka.kicad_wks",
     "drawing": {
       "text_offset_ratio": 0.08,
       "label_size_ratio": 0.25

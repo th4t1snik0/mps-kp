@@ -32,6 +32,17 @@
    (дописать «ДОПИШИ», сохранить в PDF самому) и «— просмотр.pdf», чтобы посмотреть.
 
 С нейронкой: дайте ей ссылку на этот репо и на ваш Issue — пусть читает `AGENTS.md` и шлёт файлы командами выше.
+
+**Открыть схему в KiCad** (необязательно — PNG и PDF уже готовы):
+
+1. Поставить [KiCad 10](https://www.kicad.org/download/) (Windows/macOS — установщик с сайта; macOS: `brew install --cask kicad`).
+2. Поставить шрифт рамки [`fonts/GOST_A.ttf`](fonts/GOST_A.ttf) (открыть файл → «Установить»), иначе надписи будут другим шрифтом.
+3. Из папки `СХЕМА-N` (диск или ветка results) скачать в одну папку **три файла**: `schematic.kicad_pro`, `schematic.kicad_sch`,
+   `ramka.kicad_wks` — и открыть `schematic.kicad_pro`. Символы встроены в схему, рамка ГОСТ подключится сама.
+
+Править схему в KiCad руками можно, но **только для себя**: в ПЗ1, перечень и следующие `СХЕМА-N` это не попадёт. Чтобы правка
+осталась — номинал, тип, перечень, «Примечание», сдвиг блока — пишите `/правка` (или попросите нейронку, формат — `AGENTS.md`,
+«Замечания руководителя»); если ошибка в самой схеме (связи) — напишите в Issue, её чинят в генераторе для всех.
 Просто посмотреть схему любого варианта: Actions → **Проба варианта** (для участников репо).
 
 ## Для ИИ
@@ -54,6 +65,19 @@ make code-init S=<ник> && make code S=<ник> # заготовки прог�
 make pz1 S=<ник> / make pz2 S=<ник>         # ПЗ в docx
 make remark S=<ник> KM=1 TEXT="…"           # замечание руководителя → students/<ник>/remarks.md
 ```
+
+**KiCad у ИИ** (нужен, чтобы собрать и проверить схему локально; без него схему соберёт джоба КМ-1):
+
+```sh
+brew install --cask kicad && brew install go poppler                     # macOS
+sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases && sudo apt-get install -y kicad poppler-utils   # Ubuntu
+mkdir -p ~/.fonts && cp fonts/*.ttf ~/.fonts/ && fc-cache -f              # шрифт GOST type A (Linux; macOS — открыть fonts/GOST_A.ttf)
+make student S=<ник>   # схема + PDF/PNG + ERC → build/<группа>-23/<M>/: erc-summary.txt должен быть пустым, PNG — посмотреть глазами
+```
+
+Правки схемы студента — только через `students/<ник>/schema/fixes.yaml` (номиналы, перечень, «Примечание», сдвиги блоков): тогда они
+войдут в `СХЕМА-N`, а из неё — в ПЗ1 и проверку кода. `.kicad_sch` руками не править (следующая сборка его перезапишет),
+связи — только в генераторе `internal/schgen` для всех, по `RULES.md`, с `make test` и просмотром PNG.
 
 Как писать программы — [`docs/code-guide.md`](docs/code-guide.md), ПЗ — [`docs/pz-guide.md`](docs/pz-guide.md),
 правки схемы по замечаниям (`schema/fixes.yaml`) — AGENTS.md. Настройка репо (Яндекс-диск, Issue-бот) — [`docs/admin.md`](docs/admin.md).
