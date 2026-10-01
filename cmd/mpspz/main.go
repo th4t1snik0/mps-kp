@@ -68,6 +68,7 @@ func main() {
 	textPath := filepath.Join(pzdir, *doc+".md")
 	txt, _ := os.ReadFile(textPath)
 	d := pz.NewDoc(out, pz.ParseStudent(string(txt)))
+	d.FontDir = *fontDir
 	if *dstyle == "" {
 		*dstyle = st.PZStyle
 	}

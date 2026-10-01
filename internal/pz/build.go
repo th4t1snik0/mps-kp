@@ -38,5 +38,5 @@ func Build(d *Doc, out string) error {
 	}
 	os.Remove(refPath)
 	// порядок элементов по схеме OOXML: Word строже LibreOffice (см. ooxml.go)
-	return normalizeDocx(out)
+	return normalizeDocx(out, d.media)
 }

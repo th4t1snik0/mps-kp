@@ -2,6 +2,7 @@ package pz
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -48,6 +49,7 @@ type titleRow struct {
 	body   string
 	valign string
 	graph  string
+	img    string // картинка на месте боковых граф (обе их колонки) — вместо graph
 }
 
 func twip(mm float64) int { return int(mm*56.7 + 0.5) }
@@ -84,7 +86,10 @@ func titleTable(rows []titleRow, graphs bool) string {
 	for _, r := range rows {
 		fmt.Fprintf(&b, `<w:tr><w:trPr><w:cantSplit/><w:trHeight w:val="%d" w:hRule="exact"/></w:trPr>`, twip(r.h))
 		if graphs {
-			if r.graph != "" {
+			if r.img != "" {
+				cell(cols[0]+cols[1], `<w:gridSpan w:val="2"/><w:vAlign w:val="bottom"/>`,
+					`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/><w:ind w:left="0" w:firstLine="0"/></w:pPr>`+r.img+`</w:p>`)
+			} else if r.graph != "" {
 				cell(cols[0], box+`<w:textDirection w:val="btLr"/><w:vAlign w:val="center"/>`,
 					`<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:ind w:left="0" w:firstLine="0"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:i/><w:sz w:val="16"/></w:rPr><w:t>`+xmlEsc(r.graph)+`</w:t></w:r></w:p>`)
 				cell(cols[1], box, "")
@@ -127,13 +132,25 @@ func (d *Doc) Title(t TitleInfo) {
 		{h: 14, body: tp("center", 0, 0, false, 14, run("Проектирование микропроцессорной системы на базе МК i8051"))},
 		{h: 14, body: tp("center", 0, 0, true, 14, run(t.Doc))},
 		{h: 10, body: tp("center", 0, 0, false, 12, run("Листов ")+numPages())},
+	}
+	// боковые графы картинкой (простые просмотрщики docx не умеют повёрнутый текст в ячейке); нет шрифта — текстом
+	if png, err := sideGraphPNG(filepath.Join(d.FontDir, "GOST_A.ttf")); d.FontDir != "" && err == nil {
+		d.media["sidegraphs.png"] = png
+		rows = append(rows, titleRow{h: sideH(), img: inlineImage("rIdSideGraph", "Боковые графы", sideW, sideH()),
+			body: tp("left", 21, 95, false, 12, run("Выполнил: "+t.FIO)) + tp("left", 1.5, 95, false, 12, run("Группа: "+t.Group)) +
+				tp("left", 1.5, 95, false, 12, run(fmt.Sprintf("Вариант: %d", t.M))) + tp("left", 6, 95, false, 12, run("Проверил: "+t.Checker)) +
+				tp("center", 78, 0, false, 12, run(fmt.Sprintf("Москва, %d", t.Year)))})
+		d.w("\n```{=openxml}\n%s\n```\n\n", titleTable(rows, true))
+		return
+	}
+	rows = append(rows, []titleRow{
 		{h: 35, graph: "Подп. и дата", valign: "bottom", body: tp("left", 0, 95, false, 12, run("Выполнил: "+t.FIO)) +
 			tp("left", 1.5, 95, false, 12, run("Группа: "+t.Group)) + tp("left", 1.5, 95, false, 12, run(fmt.Sprintf("Вариант: %d", t.M)))},
 		{h: 25, graph: "Инв. № дубл.", body: tp("left", 5, 95, false, 12, run("Проверил: "+t.Checker))},
 		{h: 25, graph: "Взам. инв. №"},
 		{h: 35, graph: "Подп. и дата"},
 		{h: 25, graph: "Инв. № подл.", valign: "center", body: tp("center", 0, 0, false, 12, run(fmt.Sprintf("Москва, %d", t.Year)))},
-	}
+	}...)
 	d.w("\n```{=openxml}\n%s\n```\n\n", titleTable(rows, true))
 }
 

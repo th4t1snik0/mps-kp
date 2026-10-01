@@ -28,8 +28,10 @@ type Doc struct {
 	appendixNo int
 	Style      DocStyle
 	toc        []tocEntry
-	tocPages   []int // номера страниц заголовков (FillTOCPages), nil — без номеров
-	pages      int   // число листов по рендеру (FillTOCPages), 0 — неизвестно
+	tocPages   []int             // номера страниц заголовков (FillTOCPages), nil — без номеров
+	pages      int               // число листов по рендеру (FillTOCPages), 0 — неизвестно
+	FontDir    string            // папка шрифтов (fonts/): для картинок титула; пусто — без них
+	media      map[string][]byte // картинки сырого OOXML (word/media/…), кладутся в docx после pandoc
 }
 
 type tocEntry struct {
@@ -39,7 +41,7 @@ type tocEntry struct {
 
 // NewDoc — документ; student — разобранный students/<ник>/pz/pzN.md (может быть nil).
 func NewDoc(dir string, student map[string]string) *Doc {
-	return &Doc{Dir: dir, Student: student, Style: docStyles["C"]}
+	return &Doc{Dir: dir, Student: student, Style: docStyles["C"], media: map[string][]byte{}}
 }
 
 func esc(s string) string {

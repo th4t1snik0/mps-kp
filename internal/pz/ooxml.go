@@ -266,8 +266,42 @@ func NormalizeOOXML(x string) string {
 	return x
 }
 
+// pageBreaks — «с новой страницы» у заголовков разделов (Heading1) и «СОДЕРЖАНИЯ» (TOCHeading): свойство стиля pageBreakBefore
+// простые просмотрщики docx игнорируют (всё идёт сплошняком), поэтому — явный разрыв первым элементом самого заголовка
+// (понимают все; в отличие от отдельного абзаца с разрывом, не даёт пустого листа в Word). В стилях pageBreakBefore убирается.
+func pageBreaks(name, x string) string {
+	if name == "word/styles.xml" {
+		return strings.NewReplacer("<w:pageBreakBefore/>", "", "<w:pageBreakBefore />", "").Replace(x)
+	}
+	if name != "word/document.xml" {
+		return x
+	}
+	var b strings.Builder
+	for {
+		i := -1
+		for _, st := range []string{`<w:pStyle w:val="Heading1"`, `<w:pStyle w:val="TOCHeading"`} {
+			if j := strings.Index(x, st); j >= 0 && (i < 0 || j < i) {
+				i = j
+			}
+		}
+		if i < 0 {
+			b.WriteString(x)
+			return b.String()
+		}
+		k := strings.Index(x[i:], "</w:pPr>")
+		if k < 0 {
+			b.WriteString(x)
+			return b.String()
+		}
+		k += i + len("</w:pPr>")
+		b.WriteString(x[:k])
+		b.WriteString(`<w:r><w:br w:type="page"/></w:r>`)
+		x = x[k:]
+	}
+}
+
 // normalizeDocx переписывает word/*.xml в docx с упорядоченными элементами.
-func normalizeDocx(path string) error {
+func normalizeDocx(path string, media map[string][]byte) error {
 	zr, err := zip.OpenReader(path)
 	if err != nil {
 		return err
@@ -287,7 +321,21 @@ func normalizeDocx(path string) error {
 			return err
 		}
 		if strings.HasPrefix(f.Name, "word/") && strings.HasSuffix(f.Name, ".xml") && !strings.Contains(f.Name, "_rels") {
-			b = []byte(NormalizeOOXML(string(b)))
+			b = []byte(NormalizeOOXML(pageBreaks(f.Name, string(b))))
+		}
+		// картинки сырого OOXML: ссылки rId<Имя> → media/<файл>; тип png объявлен
+		if f.Name == "word/_rels/document.xml.rels" {
+			x := string(b)
+			for name := range media {
+				id := mediaID(name)
+				if !strings.Contains(x, `Id="`+id+`"`) {
+					x = strings.Replace(x, "</Relationships>", `<Relationship Id="`+id+`" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/`+name+`"/></Relationships>`, 1)
+				}
+			}
+			b = []byte(x)
+		}
+		if f.Name == "[Content_Types].xml" && len(media) > 0 && !strings.Contains(string(b), `Extension="png"`) {
+			b = []byte(strings.Replace(string(b), "<Default ", `<Default Extension="png" ContentType="image/png"/><Default `, 1))
 		}
 		w, err := zw.CreateHeader(&zip.FileHeader{Name: f.Name, Method: f.Method, Modified: f.Modified})
 		if err != nil {
@@ -297,8 +345,23 @@ func normalizeDocx(path string) error {
 		w.Write(b)
 	}
 	zr.Close()
+	for name, data := range media {
+		w, err := zw.Create("word/media/" + name)
+		if err != nil {
+			return err
+		}
+		w.Write(data)
+	}
 	if err := zw.Close(); err != nil {
 		return err
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o644)
+}
+
+// mediaID — rId картинки сырого OOXML по имени файла (sidegraphs.png → rIdSideGraph).
+func mediaID(name string) string {
+	if name == "sidegraphs.png" {
+		return "rIdSideGraph"
+	}
+	return "rIdMedia_" + strings.TrimSuffix(name, ".png")
 }
