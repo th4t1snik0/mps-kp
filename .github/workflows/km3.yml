@@ -124,6 +124,7 @@ jobs:
             build/**/.pubdest
             build/**/.nick
             build/**/.send
+            build/**/params.md
             build/.root
           retention-days: 7
 
