@@ -41,6 +41,29 @@ def q(path):
     return urllib.parse.quote(path)
 
 
+STEPS = ["КМ-1 · схема", "КМ-2 · ПЗ1", "КМ-3 · программы и ПЗ2"]
+GUIDE = f"https://github.com/{REPO}/blob/main"
+
+
+def card(step, title, files="", student="", ai="", nxt="", foot=""):
+    """Карточка в Issue — как у бота (scripts/issue_bot.py): шаг, 📎 файлы, 🧑‍🎓 студенту, 🤖 нейронке, ➡️ дальше."""
+    prog = " → ".join(f"{'✅' if i < step else '▶️' if i == step else '⬜'} {s}" for i, s in enumerate(STEPS, 1))
+    parts = [f"## {title}", f"<sub>{prog}</sub>"]
+    for head, body in (("📎 Файлы", files), ("🧑‍🎓 Студенту", student), ("🤖 Нейронке", ai), ("➡️ Дальше", nxt)):
+        if body:
+            parts.append(f"**{head}**\n\n{body}")
+    if foot:
+        parts.append(foot)
+    return "\n\n".join(parts)
+
+
+WARN = ("### ⚠️ ОБЯЗАТЕЛЬНО ПЕРЕЧИТАЙТЕ ВЕСЬ ОТЧЁТ ЦЕЛИКОМ ПЕРЕД СДАЧЕЙ\n"
+        "**В нём есть жёлтые пометки «ДОПИШИ» — места, которые нужно написать самому. Отчёт с такими пометками сдавать нельзя.**\n\n"
+        "✍ **Своими словами:** когда всё дописано и это последняя сборка — откройте docx и перескажите своими словами общие абзацы "
+        "(введение, описания, выводы): тексты у всех из одного шаблона. Числа, таблицы, рисунки и обозначения не трогать; "
+        "новая сборка перезапишет docx — сохраните копию. Подробно — [гайд по ПЗ, «Своими словами»](" + GUIDE + "/docs/pz-guide.md).")
+
+
 def ok(d):
     nick = read(os.path.join(d, ".nick"))
     if not nick:
@@ -55,83 +78,95 @@ def ok(d):
     path = f"{dest}/{run}"
     blob = f"https://github.com/{REPO}/blob/results/{q(path)}"
     tree = f"https://github.com/{REPO}/tree/results/{q(path)}"
-    raw = f"https://raw.githubusercontent.com/{REPO}/results/{q(path)}"
+    rawr = f"https://raw.githubusercontent.com/{REPO}/results/{q(path)}"
     files = sorted(os.listdir(os.path.join(d, ".pub"))) if os.path.isdir(os.path.join(d, ".pub")) else []
-    lines = []
-    if run.startswith("СХЕМА"):
-        lines.append(f"### ✅ {run} — схема и перечень (КМ-1)")
-        erc = read(os.path.join(d, ".pub", "erc-summary.txt"))
-        lines.append("ERC: чисто" if not erc else "⚠ ERC — есть замечания, см. `erc-summary.txt`")
-        lines.append(f"\n[![схема]({raw}/schematic.png)]({raw}/schematic.png)\n")
-        lines.append(" · ".join(f"[{t}]({blob}/{q(f)})" for t, f in [("схема PDF", "schematic.pdf"), ("KiCad", "schematic.kicad_sch"),
-                                                                     ("перечень ПЭ3", "perechen.pdf"), ("перечень для КМ-1", "perechen-km1.pdf"),
-                                                                     ("параметры варианта", "params.md"), ("vars.inc", "vars.inc")] if f in files))
-    else:
-        km = "КМ-2" if run.startswith("ПЗ1") else "КМ-3"
-        lines.append(f"### ✅ {run} ({km})")
-        docs = [f for f in files if f.endswith(".docx") or f.endswith(".pdf")]
-        if docs:
-            lines.append(" · ".join(f"[{f}]({blob}/{q(f)})" for f in docs))
-        doc, cmd = ("pz1", "пз1") if run.startswith("ПЗ1") else ("pz2", "пз2")
-        rep = read(os.path.join(d, doc, "report.md"))
-        m = re.search(r"Мест «ДОПИШИ»: \d+, осталось заполнить: (\d+)", rep)
-        if m:
-            left = int(m.group(1))
-            lines.append("Все места «ДОПИШИ» заполнены." if left == 0 else
-                         (f"Осталось мест «ДОПИШИ»: **{left}** — дописать в `students/{nick}/pz/{doc}.md` и прислать командой `/{cmd}` + текст файла."
-                          if os.path.exists(os.path.join("students", nick, "pz", doc + ".md")) else
-                          f"Осталось мест «ДОПИШИ»: **{left}** — сначала `/заготовки` (появится `pz/{doc}.md` с подсказками), "
-                          f"потом дописать и прислать `/{cmd}` + текст файла."))
-        code = read(os.path.join(d, ".pub", "программы", "report.md"))
-        if code:
-            bad = len(re.findall(r"^## ❌", code, re.M))
-            lines.append(f"Программы: {'❌ есть ошибки — ' if bad else '✅ '}[отчёт проверки]({blob}/{q('программы/report.md')})")
-            pd = os.path.join(d, ".pub", "программы")
-            robot = sorted(f for f in os.listdir(pd) if f.endswith(".txt"))
-            src = sorted(f for f in os.listdir(pd) if f.endswith(".a51"))
-            if robot:
-                lines.append("- файлы для робота (`vars.inc` уже вклеен): " + " · ".join(f"[{f}]({blob}/{q('программы/' + f)})" for f in robot))
-            if src:
-                lines.append("- исходники: " + " · ".join(f"[{f}]({blob}/{q('программы/' + f)})" for f in src) +
-                             " (листинги `.lst`, `.hex` — в папке прогона)")
-    lines += send_hint(d, run, dest, files, blob)
+    link = lambda f, t=None: f"[{t or f}]({blob}/{q(f)})"
     disk = read(os.path.join(d, ".disk")) or path
-    if PUBLIC:
-        lines.append(f"\n📁 Яндекс-диск: [{disk}]({PUBLIC}/{q(disk)}) · все файлы прогона: [results]({tree})")
-    else:
-        lines.append(f"\n📁 Все файлы прогона: [results]({tree})")
-    lines.append(f"<sub>запуск: {RUN}</sub>")
-    comment(issue, "\n".join(lines))
-
-
-def send_hint(d, run, dest, files, blob):
-    """Что и как отправлять — по ТЗ-2026 (разд. 2.1, 2.2): тема «МПС-…», файл «Фамилия ИО Смысл-vN», в теле — группа и вариант."""
+    where = f"📁 [Яндекс-диск: {disk}]({PUBLIC}/{q(disk)}) · [все файлы прогона]({tree})" if PUBLIC else f"📁 [все файлы прогона]({tree})"
+    foot = f"<sub>запуск: {RUN}</sub>"
     sv = read(os.path.join(d, ".send")).splitlines()
-    if len(sv) < 2:
-        return []
-    short, ver = sv[0], sv[1]
+    short, ver = (sv[0], sv[1]) if len(sv) >= 2 else ("Фамилия ИО", "1")
     grp, rest = (dest.split("/", 1) + [""])[:2]
     var = rest.split(" ", 1)[0]
     body = f"в теле письма — «группа {grp}, вариант {var}»"
+    has = lambda rel: os.path.exists(os.path.join("students", nick, rel))
+
     if run.startswith("СХЕМА"):
-        f = f"{short} Схема-v{ver}.png"
-        link = f"[{f}]({blob}/{q(f)})" if f in files else f"`{f}`"
-        return [f"\n✉️ **Сдать КМ-1:** на почту руководителя, тема «МПС-Схема», вложение {link}; {body}."]
-    own = ("\n## ⚠️ ОБЯЗАТЕЛЬНО ПЕРЕЧИТАЙТЕ ВЕСЬ ОТЧЁТ ЦЕЛИКОМ ПЕРЕД СДАЧЕЙ\n"
-           "**В нём есть жёлтые пометки «ДОПИШИ» — места, которые нужно написать самому. Отчёт с такими пометками сдавать нельзя.**\n"
-           "\n✍ **Перед сдачей:** допишите все «ДОПИШИ», затем по последней сборке откройте docx и **перескажите своими словами** общие абзацы "
-           "(введение, описания, выводы) — тексты у всех из одного шаблона. Числа, таблицы, рисунки и обозначения не трогать; "
-           "следующая сборка перезапишет docx — сохраните копию. Подробно — `docs/pz-guide.md`, «Своими словами».")
+        erc = read(os.path.join(d, ".pub", "erc-summary.txt"))
+        png = f"{short} Схема-v{ver}.png"
+        comment(issue, card(1, f"✅ Шаг 1 · КМ-1 — схема готова ({run})",
+            files=f"[![схема]({rawr}/schematic.png)]({rawr}/schematic.png)\n\n" +
+                  " · ".join(link(f, t) for f, t in [(png, f"📤 {png}"), ("schematic.pdf", "схема PDF"), ("perechen-km1.pdf", "перечень для КМ-1"),
+                                                     ("perechen.pdf", "перечень ПЭ3"), ("schematic.kicad_pro", "проект KiCad"),
+                                                     ("schematic.kicad_sch", "схема KiCad")] if f in files) + f"\n\n{where}",
+            student=("ERC: чисто ✅" if not erc else "⚠ ERC — есть замечания, см. `erc-summary.txt`") +
+                    f"\n\n✉️ **Сдать КМ-1:** на почту руководителя, тема «МПС-Схема», вложение **{png}**; {body}.\n\n"
+                    "Открыть в KiCad: скачать `schematic.kicad_pro`, `schematic.kicad_sch`, `ramka.kicad_wks` в одну папку и открыть проект "
+                    f"([подробно]({GUIDE}/README.md#для-студентов)).",
+            ai=f"Данные варианта для следующих шагов: {link('params.md')} (адреса, программы, таймеры) · {link('vars.inc')} "
+               "(EQU/BIT для ассемблера). Числа не пересчитывай — бери отсюда.",
+            nxt=("ПЗ1 и ПЗ2 пересоберутся по этой схеме сами — ждите их карточки." if has("pz/pz1.md") else
+                 "**Шаг 2 · КМ-2 — напишите `/км2`**: появится заготовка ПЗ1, в ней дописать 2 абзаца."),
+            foot=foot))
+        return
+
     if run.startswith("ПЗ1"):
-        return [own, f"\n✉️ **Сдать КМ-2:** допишите «ДОПИШИ», откройте docx → «Сохранить как PDF» → `{short} ПЗ1-v{ver}.pdf`; "
-                f"на почту руководителя, тема «МПС-ПЗ1»; {body}."]
-    out = [own, f"\n✉️ **Сдать ПЗ2:** docx → «Сохранить как PDF» → `{short} ПЗ2-v{ver}.pdf`; на почту ОСЭП руководителя, тема «МПС-ПЗ2»; {body}."]
-    codes = sorted(f for f in os.listdir(os.path.join(d, ".pub", "программы")) if f.endswith(".txt")) if os.path.isdir(os.path.join(d, ".pub", "программы")) else []
-    if codes:
-        out.append("✉️ **Программы** — после того как ПЗ2 рассмотрят: тема «МПС-код», вложения " +
-                   ", ".join(f"`{c}`" for c in codes) + f" (имена не менять — по ним проверяет робот); {body}.")
-    out.append(km3_guide(d, var))
-    return out
+        m = re.search(r"Мест «ДОПИШИ»: \d+, осталось заполнить: (\d+)", read(os.path.join(d, "pz1", "report.md")))
+        left = int(m.group(1)) if m else -1
+        docs = [f for f in files if f.endswith(".docx")] + [f for f in files if f.endswith(".pdf")]
+        comment(issue, card(2, f"{'✅' if left == 0 else '📝'} Шаг 2 · КМ-2 — ПЗ1 ({run})",
+            files=" · ".join(link(f, ("📄 " if f.endswith(".docx") else "👁 ") + f) for f in docs) + f"\n\n{where}",
+            student=("✅ Все места «ДОПИШИ» заполнены." if left == 0 else
+                     f"📝 Осталось мест «ДОПИШИ»: **{left}** — их дописывает нейронка или вы (`pz1.md`, команда `/км2`).") +
+                    "\n\n" + WARN +
+                    f"\n\n✉️ **Сдать КМ-2:** docx → «Сохранить как PDF» → `{short} ПЗ1-v{ver}.pdf` → на почту руководителя, тема «МПС-ПЗ1»; {body}.",
+            ai=(f"Возьми текущий [`pz1.md`](https://raw.githubusercontent.com/{REPO}/main/students/{nick}/pz/pz1.md), заполни разделы под "
+                "подсказками «✍» своими словами от лица студента и пришли файл целиком: `/км2` + блок ```` ```pz1.md ````. "
+                if left != 0 else "Всё заполнено. ") +
+               "Перед сдачей предложи студенту пересказ общих абзацев (факты и числа не меняй).",
+            nxt="**Шаг 3 · КМ-3 — напишите `/км3`**: заготовки программ, ПЗ2 и схем алгоритмов, гайд по коду.",
+            foot=foot))
+        return
+
+    # ПЗ2 + программы (КМ-3)
+    m = re.search(r"Мест «ДОПИШИ»: \d+, осталось заполнить: (\d+)", read(os.path.join(d, "pz2", "report.md")))
+    left = int(m.group(1)) if m else -1
+    code = read(os.path.join(d, ".pub", "программы", "report.md"))
+    bad = len(re.findall(r"^## ❌", code, re.M)) if code else 0
+    pd = os.path.join(d, ".pub", "программы")
+    robot = sorted(f for f in os.listdir(pd) if f.endswith(".txt")) if os.path.isdir(pd) else []
+    src = sorted(f for f in os.listdir(pd) if f.endswith(".a51")) if os.path.isdir(pd) else []
+    docs = [f for f in files if f.endswith(".docx")] + [f for f in files if f.endswith(".pdf")]
+    fl = []
+    if code:
+        fl.append(f"{'❌' if bad else '✅'} {link('программы/report.md', 'отчёт проверки программ')}")
+    if robot:
+        fl.append("📤 файлы для робота (`vars.inc` вклеен): " + " · ".join(link('программы/' + f, f) for f in robot))
+    if src:
+        fl.append("исходники: " + " · ".join(link('программы/' + f, f) for f in src))
+    if docs:
+        fl.append(" · ".join(link(f, ("📄 " if f.endswith(".docx") else "👁 ") + f) for f in docs))
+    st = ["❌ **В программах есть ошибки** — что именно, в отчёте проверки; их исправляет нейронка (или вы) и присылает заново `/км3`."
+          if bad else "✅ Программы проходят нашу проверку в эмуляторе на модели вашей схемы."]
+    if left > 0:
+        st.append(f"📝 В ПЗ2 осталось мест «ДОПИШИ»: **{left}** (`pz2.md`, команда `/км3`).")
+    st.append(WARN)
+    st.append(f"✉️ **Сдать:** 1) **ПЗ2** — docx → «Сохранить как PDF» → `{short} ПЗ2-v{ver}.pdf` → на почту ОСЭП руководителя, тема «МПС-ПЗ2»; {body}.\n"
+              "2) **После рассмотрения ПЗ2** — программы: " + (", ".join(f"`{c}`" for c in robot) if robot else "файлы `Фамилия ИО-код-n.txt`") +
+              f" (имена не менять — по ним проверяет робот), тема «МПС-код», на почту ОСЭП руководителя; {body}.")
+    st.append(km3_guide(d, var))
+    ai = (f"Исправь ошибки по [отчёту]({blob}/{q('программы/report.md')}) и пришли исправленные файлы `/км3` "
+          "(каждый — блоком с именем файла в первой строке)." if bad else "Программы проходят.")
+    if left > 0:
+        ai += (f" Допиши «ДОПИШИ» в [`pz2.md`](https://raw.githubusercontent.com/{REPO}/main/students/{nick}/pz/pz2.md) "
+               "и пришли `/км3` + блок ```` ```pz2.md ````.")
+    ai += f" Гайд по коду — [docs/code-guide.md]({GUIDE}/docs/code-guide.md)."
+    comment(issue, card(3, f"{'❌' if bad else '✅'} Шаг 3 · КМ-3 — программы и ПЗ2 ({run})",
+        files="\n".join(f"- {x}" for x in fl) + f"\n\n{where}",
+        student="\n\n".join(st), ai=ai,
+        nxt=("Исправить программы и прислать `/км3`." if bad else
+             "Сдать ПЗ2, после её рассмотрения — программы. Ответ руководителя или робота — `/замечание КМ-3 <дословно>`."),
+        foot=foot))
 
 
 def km3_guide(d, var):
@@ -146,7 +181,7 @@ def km3_guide(d, var):
     if progs:
         lines.append(f"\n**Твои программы (вариант {var}):**\n" + "\n".join(progs))
     lines += [
-        "\n**Что даётся:** заготовки по рис. 7 ТЗ под вариант (`/заготовки` → `code/prog1-3.a51`), `vars.inc` с адресами, битами и "
+        "\n**Что даётся:** заготовки по рис. 7 ТЗ под вариант (`/км3` → `code/prog1-3.a51`), `vars.inc` с адресами, битами и "
         "константами варианта (в файлы для робота вклеивается сам), гайд — `docs/code-guide.md` (правила робота, устройства схемы глазами программы).",
         "\n**Требования ТЗ к каждой программе:** заглушки `nop` + `reti` на всех неиспользуемых прерываниях; инициализация сразу после Reset; "
         "процедура задачи с комментарием `%proc%`, вызванная `call` (без бесконечных циклов внутри); последняя команда `jmp $ ; %stop%`; "
@@ -154,8 +189,8 @@ def km3_guide(d, var):
         "\n**Как проверяем мы** (каждый прогон): свой ассемблер (байты = MCU 8051 IDE) и эмулятор 8051 с моделью **твоей** схемы "
         "(клавиатура, буфер IDT7005, индикатор, регистр Y2, стробы, дешифратор): сценарии из ТЗ, такты таймеров, правила рис. 7 → отчёт ✅/❌ выше. "
         "Это наша проверка, не робот кафедры: как именно проверяет робот, неизвестно — его ответ главный.",
-        "\n**Как прислать код сюда:** комментарий `/prog1` и сразу под ним весь файл блоком ```` ```asm … ``` ```` (так же `/prog2`, `/prog3`) — "
-        "проверка и ПЗ2 пересоберутся сами.",
+        "\n**Как прислать код сюда:** комментарий `/км3` и под ним файлы блоками, в первой строке блока — имя файла "
+        "(```` ```prog1.a51 ````, ```` ```prog2.a51 ````, ```` ```pz2.md ````) — проверка и ПЗ2 пересоберутся сами.",
         "\n**Как сдавать (ТЗ, разд. 2.2):**\n"
         "   1. Сначала **ПЗ2** — PDF на почту ОСЭП руководителя, тема «МПС-ПЗ2».\n"
         "   2. **После рассмотрения ПЗ2** (с учётом замечаний) — **программы**: файлы для робота (ссылки выше, `.txt`, UTF-8) на почту ОСЭП "
@@ -169,8 +204,8 @@ def km3_guide(d, var):
 def fail(nick):
     issue = issue_of(nick)
     if issue:
-        comment(issue, f"### ❌ {WF}: не получилось\nЧто именно — в логе: {RUN} (раскройте шаг с красным крестиком).\n"
-                       "Частое: «схемы ещё нет» → `/схема`; «схема устарела» → `/всё`.")
+        comment(issue, f"## ❌ {WF}: не получилось\n\nЧто именно — [в логе]({RUN}) (раскройте шаг с красным крестиком).\n\n"
+                       "**Частое:** «схемы ещё нет» → `/км1`; «схема устарела» (меняли форму или правки схемы) → `/км1`, потом `/км2`, `/км3`.")
 
 
 if __name__ == "__main__":

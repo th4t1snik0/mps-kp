@@ -95,7 +95,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           S: ${{ inputs.student }}
         run: |
-          gh workflow run km2.yml --ref main -f student="$S"
+          [ -f "students/$S/pz/pz1.md" ] && gh workflow run km2.yml --ref main -f student="$S" || echo "ПЗ1 ещё не начата — КМ-2 не запускаю"
           ls students/"$S"/code/prog[123].a51 >/dev/null 2>&1 && gh workflow run km3.yml --ref main -f student="$S" || echo "программ ещё нет — КМ-3 не запускаю"
 
       - uses: actions/upload-artifact@v4
