@@ -96,6 +96,9 @@ func TestProg1FromMain(t *testing.T) {
 }
 
 // Испорченные эталоны должны падать — иначе чекер ничего не ловит.
+// пункты, где поломка даёт ⚠️, а не ❌
+var warnItems = map[string]bool{"Удержание клавиши": true, "Указатель стека": true, "Банки регистров": true}
+
 func TestBrokenFail(t *testing.T) {
 	needSim(t)
 	cases := []struct {
@@ -119,6 +122,10 @@ func TestBrokenFail(t *testing.T) {
 		{"переменная на адресе головы", "А-12", 14, 3, "X1:     DS 1", "X1      DATA 47h\nXX:     DS 1", "Память"},
 		{"INT0 по уровню", "А-12", 14, 1, "        setb IT0                ; INT0 по спаду", "        clr IT0", "Удержание клавиши"},
 		{"%proc% с пробелом", "А-12", 14, 1, "; %proc%", "; % proc%", "Пометки роботу"},
+		{"имя длиннее 60 (ловит ассемблер)", "А-12", 14, 1, "        setb IT0                ; INT0 по спаду", "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL: setb IT0", "Сборка"},
+		{"стек на голове", "А-12", 14, 1, "        mov SP, #07h", "        mov SP, #46h", "Стек"},
+		{"нет mov SP", "А-12", 14, 1, "        mov SP, #07h", "", "Указатель стека"},
+		{"банк 1 при SP = 07h", "А-12", 14, 1, "        mov SP, #07h", "        mov SP, #07h\n        setb RS0", "Банки регистров"},
 		{"нет заглушки", "А-12", 14, 1, "org 23h ; \"заглушка\" для UART\n        nop\n        reti\n", "", "Заглушки IRQ"},
 	}
 	for _, c := range cases {
@@ -131,7 +138,7 @@ func TestBrokenFail(t *testing.T) {
 			}
 			r := run(t, p, c.n, strings.Replace(src, c.old, c.nu, 1))
 			for _, it := range r.Items {
-				if it.Name == c.item && (it.Level == Fail || it.Level == Warn && c.item == "Удержание клавиши") {
+				if it.Name == c.item && (it.Level == Fail || it.Level == Warn && warnItems[c.item]) {
 					t.Log(it.Msg)
 					return
 				}

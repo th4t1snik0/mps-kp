@@ -79,12 +79,14 @@ func Check(in Input) *Report {
 
 	m := lintAsm(r, res)
 	lintRules(r, res, in.Params)
+	lintStack(r, res)
 	if m == nil || in.NoSim {
 		return r
 	}
 	r.SimRun = true
 	r.MaxSP = 7
 	simulate(r, in, res, m)
+	checkStack(r, res, in.Params)
 	return r
 }
 
