@@ -35,7 +35,7 @@ on:
 
 concurrency:
   group: km3-${{ github.ref }}-${{ inputs.student }}
-  cancel-in-progress: true
+  cancel-in-progress: false   # не обрывать: опубликованный в results прогон должен доехать до диска (отдельная джоба yadisk)
 
 permissions:
   contents: write

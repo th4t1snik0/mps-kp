@@ -77,6 +77,7 @@ type Asm struct {
 	ended  bool
 	errSet map[int]bool
 	cond   []condState // вложенные IF … ENDIF
+	bank   int         // банк регистров для AR0…AR7 (USING n), с начала прохода — 0
 }
 
 // condState — ветка условной сборки: active — сейчас собираем, taken — какая-то ветка уже выбрана.
@@ -89,6 +90,7 @@ func Assemble(name, src string, read Reader) *Result {
 	a := &Asm{syms: map[string]Symbol{}, short: map[int]string{}, errSet: map[int]bool{}}
 	a.load(name, src, read, false, 0)
 	for a.pass = 1; a.pass <= 2; a.pass++ {
+		a.bank = 0
 		a.seg, a.lc, a.ended, a.cond = segCode, [5]int{}, false, nil
 		a.code = map[int]byte{}
 		for i := range a.lines {
@@ -190,6 +192,10 @@ func (a *Asm) lookup(name string) (int, bool) {
 	}
 	if v, ok := builtin[u]; ok {
 		return v.Value, true
+	}
+	// AR0…AR7 (Keil A51): прямой адрес R0…R7 текущего банка — `push AR0`, `mov AR7, A`; банк задаёт USING n
+	if len(u) == 3 && strings.HasPrefix(u, "AR") && u[2] >= '0' && u[2] <= '7' {
+		return a.bank*8 + int(u[2]-'0'), true
 	}
 	return 0, false
 }
@@ -347,7 +353,14 @@ func (a *Asm) line(i int) {
 	case "END":
 		a.ended = true
 		return
-	case "USING", "NAME", "PUBLIC", "EXTRN", "EXTERN":
+	case "USING": // банк для AR0…AR7 (Keil A51); сам банк в PSW переключает программа
+		if b := a.value(rest); b >= 0 && b <= 3 {
+			a.bank = b
+		} else {
+			a.errf("USING %s: банк 0…3", rest)
+		}
+		return
+	case "NAME", "PUBLIC", "EXTRN", "EXTERN":
 		return
 	case "RSEG", "SEGMENT", "MACRO", "REPT", "IRP":
 		a.errf("%s не поддержан: робот принимает один файл — пиши абсолютными сегментами CSEG AT / DSEG AT (рис. 7 ТЗ)", u1)

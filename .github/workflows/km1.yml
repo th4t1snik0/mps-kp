@@ -33,7 +33,7 @@ on:
 # новый пуш отменяет ещё идущий прогон той же ветки; запуски Run workflow с разными вариантами не мешают друг другу
 concurrency:
   group: km1-${{ github.ref }}-${{ github.event_name }}-${{ inputs.student }}
-  cancel-in-progress: true
+  cancel-in-progress: false   # не обрывать: опубликованный в results прогон должен доехать до диска (отдельная джоба yadisk)
 
 permissions:
   contents: write   # публикация результатов в ветку results

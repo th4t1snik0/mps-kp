@@ -132,3 +132,18 @@ func TestKeilCompat(t *testing.T) {
 		t.Fatal("RSEG должен давать понятную ошибку")
 	}
 }
+
+// AR0…AR7 — как в Keil A51: прямые адреса регистров текущего банка (USING n).
+func TestARn(t *testing.T) {
+	src := "CSEG AT 0\n push AR0\n mov AR7, A\n pop AR3\n USING 1\n push AR0\n USING 0\n push AR2\n END\n"
+	r := Assemble("t.a51", src, nil)
+	if len(r.Errors) > 0 {
+		t.Fatal(r.Errors)
+	}
+	want := []byte{0xC0, 0x00, 0xF5, 0x07, 0xD0, 0x03, 0xC0, 0x08, 0xC0, 0x02}
+	for i, b := range want {
+		if r.Code[i] != b {
+			t.Fatalf("байт %d: %02X, ждём %02X (весь код % X)", i, r.Code[i], b, want)
+		}
+	}
+}

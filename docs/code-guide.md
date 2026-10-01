@@ -174,6 +174,9 @@ Y2 сначала записывается в регистр, **потом** с�
 докажи по ТЗ / ответу робота / даташиту, запиши в `docs/changelog.md` по протоколу `RULES.md`, поправь
 `internal/codecheck` вместе с тестом (эталон должен проходить, «поломка» — падать: `check_test.go`) и `make test`.
 
+Расширения Keil A51, которые понимает наш ассемблер: `AR0`…`AR7` (прямой адрес R0…R7 банка из `USING n`, по умолчанию 0 —
+`push AR0`, `mov AR7, A`), `имя EQU R7`, метка с пробелом перед «:», `IF/ELSE/ENDIF`.
+
 Устройство: `internal/asm51` — ассемблер (синтаксис A51/ASEM; байты сверяются с MCU 8051 IDE в CI —
 `scripts/mide_crosscheck.sh`; в CI — джоба `mide`: Actions → code → Run workflow с галочкой), `internal/emu51` — эмулятор 8051 (сверен с ucsim s51: `MPS_S51_DIFF=1 go test ./internal/emu51`, нужен `brew install sdcc`), `internal/sim51` — управление s51 для этой сверки, `internal/codecheck` — правила, модели устройств
 и сценарии, `cmd/mpscode` — CLI, `.github/workflows/code.yml` — CI. Ресерч инструментов — `docs/research/asm-tools.md`.
