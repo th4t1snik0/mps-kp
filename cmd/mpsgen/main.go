@@ -34,7 +34,7 @@ func main() {
 		chk    = flag.String("checker", "", "Фамилия И.О. преподавателя (по умолчанию Михалин С.Н.)")
 		year   = flag.String("year", "23", "год набора группы: А-12 → А-12-<year>")
 		doRend = flag.Bool("render", false, "после генерации запустить scripts/render.sh (PDF, PNG, ERC)")
-		style  = flag.String("style", "", "стиль листа A|B|C|D (пусто — A, auto — по ФИО; см. internal/schgen/style.go)")
+		style  = flag.String("style", "", "стиль листа A|B|C|D; пусто или auto — собирается из признаков по группе и варианту (internal/schgen/style.go)")
 		nick   = flag.Bool("nick", false, "только напечатать ник студента по -group и -name (имя папки students/<ник>/)")
 		plain  = flag.Bool("plain", false, "без «почерка» (сдвигов и вариаций шрифтов) — как эталон")
 		lib    = flag.String("lib", "masters/lib/mps.kicad_sym", "библиотека символов (пусто — без схемы)")
@@ -133,11 +133,11 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 		},
 		Y1: p.Y1Pin, Y2: p.Y2Pin, KbInt: p.KbInt, X2Int: p.X2Int,
 		Decoder: p.CSMode == "decoder", CSEn: p.CSEnPin, Filter: p.FilterCap,
-		Style: schgen.PickStyle(st.Style, st.Name),
+		Style: schgen.PickStyle(st.Style, fmt.Sprintf("%s|%d", st.GroupFull, p.M)),
 		Date:  st.Date, Student: st.Name, Checker: st.Checker,
 	}
 	if !plainSheet {
-		j := schgen.MakeJitter(fmt.Sprintf("%s|%s|%d", st.Name, st.GroupFull, p.M), p.Rows)
+		j := schgen.MakeJitter(fmt.Sprintf("%s|%d", st.GroupFull, p.M), p.Rows)
 		v.Jitter = &j
 	}
 	sh := schgen.Build(lib, v, fmt.Sprintf("%s-%d", p.Group, p.M))

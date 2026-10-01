@@ -58,7 +58,7 @@ func main() {
 		os.RemoveAll(out) // прошлая сборка (старые рисунки)
 	}
 	die(os.MkdirAll(out, 0o755))
-	fst := flow.PickStyle(fmt.Sprintf("%s|%s|%d", p.Student, st.GroupFull, p.M))
+	fst := flow.PickStyle(fmt.Sprintf("%s|%d", st.GroupFull, p.M))
 	if *plain {
 		fst = flow.Default
 	}
@@ -71,7 +71,7 @@ func main() {
 	if *dstyle == "" {
 		*dstyle = st.PZStyle
 	}
-	d.Style = pz.PickDocStyle(*dstyle, fmt.Sprintf("%s|%s|%d", p.Student, st.GroupFull, p.M))
+	d.Style = pz.PickDocStyle(*dstyle, fmt.Sprintf("%s|%d", st.GroupFull, p.M))
 	varsInc := render.Asm(p)
 
 	switch *doc {

@@ -259,7 +259,7 @@ func (s *Sheet) splitWires() {
 	for _, w := range s.wires {
 		s.items = append(s.items, L("wire",
 			L("pts", L("xy", F(w[0].X), F(w[0].Y)), L("xy", F(w[1].X), F(w[1].Y))),
-			L("stroke", L("width", F(0)), L("type", A("default"))),
+			L("stroke", L("width", F(s.J.WireW)), L("type", A("default"))),
 			L("uuid", Q(s.uuid()))))
 	}
 }
@@ -336,7 +336,7 @@ func (s *Sheet) emitBuses() {
 	for _, b := range s.buses {
 		s.items = append(s.items, L("bus",
 			L("pts", L("xy", F(b[0].X), F(b[0].Y)), L("xy", F(b[1].X), F(b[1].Y))),
-			L("stroke", L("width", F(0)), L("type", A("default"))),
+			L("stroke", L("width", F(s.J.BusW)), L("type", A("default"))),
 			L("uuid", Q(s.uuid()))))
 	}
 	for _, e := range s.entries {
@@ -356,7 +356,7 @@ func (s *Sheet) Label(name string, at Pt, right bool) {
 	}
 	s.items = append(s.items, L("label", Q(name),
 		L("at", F(at.X), F(at.Y), F(ang)),
-		L("effects", L("font", L("size", F(s.labelFont()), F(s.labelFont()))), L("justify", A(just), A("bottom"))),
+		L("effects", s.labelFontExpr(), L("justify", A(just), A("bottom"))),
 		L("uuid", Q(s.uuid()))))
 }
 
@@ -364,7 +364,7 @@ func (s *Sheet) Label(name string, at Pt, right bool) {
 func (s *Sheet) VLabel(name string, at Pt) {
 	s.items = append(s.items, L("label", Q(name),
 		L("at", F(at.X), F(at.Y), F(90)),
-		L("effects", L("font", L("size", F(s.labelFont()), F(s.labelFont()))), L("justify", A("left"), A("bottom"))),
+		L("effects", s.labelFontExpr(), L("justify", A("left"), A("bottom"))),
 		L("uuid", Q(s.uuid()))))
 }
 
@@ -374,7 +374,7 @@ func (s *Sheet) NoConnect(at Pt) {
 
 func (s *Sheet) junction(at Pt) {
 	s.items = append(s.items, L("junction",
-		L("at", F(at.X), F(at.Y)), L("diameter", F(0)), L("color", F(0), F(0), F(0), F(0)),
+		L("at", F(at.X), F(at.Y)), L("diameter", F(s.J.JunctionD)), L("color", F(0), F(0), F(0), F(0)),
 		L("uuid", Q(s.uuid()))))
 }
 
@@ -514,6 +514,15 @@ func (s *Sheet) labelFont() float64 {
 		return s.J.LabelFont
 	}
 	return labelFont
+}
+
+// labelFontExpr — (font (size …) [italic]) для меток цепей.
+func (s *Sheet) labelFontExpr() *Node {
+	f := L("font", L("size", F(s.labelFont()), F(s.labelFont())))
+	if s.J.LabelItalic {
+		f.Kids = append(f.Kids, A("italic"))
+	}
+	return f
 }
 
 // shift сдвигает весь чертёж (кроме lib_symbols) на J.ShiftX/ShiftY — один раз, после всех расчётов связей.

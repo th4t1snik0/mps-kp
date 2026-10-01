@@ -2,6 +2,7 @@ package schgen
 
 import (
 	"hash/fnv"
+	"math/rand"
 	"strings"
 )
 
@@ -31,16 +32,29 @@ var Styles = map[string]Style{
 	"D": {Name: "D", GostGates: true, GostICs: true, Perp: true, BusNames: true, Conn: ConnContNet, FullFrame: true},
 }
 
-// PickStyle — стиль по имени; пусто — A; «auto» — по ФИО (чтобы у соседей по группе листы различались).
-func PickStyle(name, fio string) Style {
+// PickStyle — стиль по имени A|B|C|D; пусто или «auto» — собранный из признаков по зерну (MixStyle).
+func PickStyle(name, seed string) Style {
 	name = strings.ToUpper(strings.TrimSpace(name))
 	if s, ok := Styles[name]; ok {
 		return s
 	}
-	if name != "AUTO" || strings.TrimSpace(fio) == "" {
-		return Styles["A"]
+	return MixStyle(seed)
+}
+
+// MixStyle — «авто»-стиль: каждый признак (вентили, микросхемы, отводы, шины, таблица разъёмов, XS1 из частей, рамка)
+// выбирается отдельно по зерну «группа|вариант» — 288 сочетаний, а один вариант всегда получает один и тот же лист.
+// Все признаки встречаются в принятых или реальных работах (см. описание Styles), электрика от них не зависит.
+func MixStyle(seed string) Style {
+	h := fnv.New64a()
+	h.Write([]byte("style|" + seed))
+	r := rand.New(rand.NewSource(int64(h.Sum64())))
+	s := Style{Name: "авто", GostGates: r.Intn(2) == 1, GostICs: r.Intn(2) == 1, Perp: r.Intn(2) == 1,
+		Conn: []ConnStyle{ConnSignalPin, ConnNumNet, ConnContNet}[r.Intn(3)], Sections: r.Intn(2) == 1, FullFrame: r.Intn(2) == 1}
+	switch r.Intn(3) {
+	case 1:
+		s.MainBus = "BUS1"
+	case 2:
+		s.BusNames = true
 	}
-	h := fnv.New32a()
-	h.Write([]byte(strings.TrimSpace(fio)))
-	return Styles[string(rune('A'+h.Sum32()%4))]
+	return s
 }

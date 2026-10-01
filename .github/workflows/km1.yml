@@ -39,11 +39,11 @@ on:
         required: false
         default: "Михалин С.Н."
       style:
-        description: "Стиль листа: A (как Рязанцев 2025), B (Осипова 2025), C (Сорокина 2023), D (Базарнов 2023)"
+        description: "Стиль листа: авто — свой для группы и варианта (одинаковый при любом прогоне); A (как Рязанцев 2025), B (Осипова 2025), C (Сорокина 2023), D (Базарнов 2023)"
         required: true
         type: choice
-        default: "A"
-        options: ["A", "B", "C", "D"]
+        default: "авто"
+        options: ["авто", "A", "B", "C", "D"]
       year:
         description: "Год набора группы: А-12 → А-12-<год>"
         required: false
@@ -90,7 +90,7 @@ jobs:
           # GitHub проверяет только «не пусто» — пробелы и мусор отсекаем тут
           [[ "$M" =~ ^[0-9]+$ ]] && [ "$M" -ge 1 ] && [ "$M" -le 30 ] || { echo "::error::M — число 1..30, а не «$M»"; exit 1; }
           [ -n "${FIO// /}" ] || { echo "::error::нужна Фамилия И.О."; exit 1; }
-          make try G="$G" M="$M" FIO="$FIO" CHK="${CHK:-Михалин С.Н.}" Y="${Y:-23}" STYLE="${STYLE:-A}"
+          make try G="$G" M="$M" FIO="$FIO" CHK="${CHK:-Михалин С.Н.}" Y="${Y:-23}" STYLE="$( [ "$STYLE" = авто ] || echo "$STYLE" )"
 
       - name: Все студенты
         if: github.event_name == 'push'

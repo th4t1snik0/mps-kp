@@ -39,10 +39,11 @@ func TestNetlist(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, v := range variants {
-		for _, st := range []string{"A", "B", "C", "D"} {
-			v.Style = Styles[st]
+		// A–D и три «авто»-сочетания признаков (MixStyle) — связи не должны зависеть ни от стиля, ни от «почерка»
+		for _, st := range []string{"A", "B", "C", "D", "mix1", "mix2", "mix3"} {
+			v.Style = PickStyle(st, fmt.Sprintf("тест|%d|%s", i, st))
 			v.Jitter = nil
-			if st == "C" || st == "D" { // «почерк» на части прогонов — связи не должны зависеть от сдвигов и шрифтов
+			if st != "A" && st != "B" {
 				j := MakeJitter(fmt.Sprintf("тест|%d|%s", i, st), v.Rows)
 				v.Jitter = &j
 			}
