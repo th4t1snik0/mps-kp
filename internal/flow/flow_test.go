@@ -20,9 +20,10 @@ func TestRenderAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// только заготовки генератора: схемы студентов проверяет сборка ПЗ2 (длинную уменьшает и предупреждает),
+	// иначе одна длинная схема одного студента роняет тесты и джобу у всех
 	files, _ := filepath.Glob("../pz/flows/*.flow")
-	more, _ := filepath.Glob("../../students/*/pz/flow/*.flow")
-	for _, f := range append(files, more...) {
+	for _, f := range files {
 		src, _ := os.ReadFile(f)
 		c, err := Parse(string(src))
 		if err != nil {

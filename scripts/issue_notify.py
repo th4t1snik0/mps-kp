@@ -150,6 +150,10 @@ def ok(d):
           if bad else "✅ Программы проходят нашу проверку в эмуляторе на модели вашей схемы."]
     if left > 0:
         st.append(f"📝 В ПЗ2 осталось мест «ДОПИШИ»: **{left}** (`pz2.md`, команда `/км3`).")
+    w = re.findall(r"^- (.+)$", read(os.path.join(d, "pz2", "report.md")).split("## Предупреждения")[-1], re.M) \
+        if "## Предупреждения" in read(os.path.join(d, "pz2", "report.md")) else []
+    if w:
+        st.append("⚠️ **Схемы алгоритмов:**\n" + "\n".join(f"- {x}" for x in w))
     st.append(WARN)
     st.append(f"✉️ **Сдать:** 1) **ПЗ2** — docx → «Сохранить как PDF» → `{short} ПЗ2-v{ver}.pdf` → на почту ОСЭП руководителя, тема «МПС-ПЗ2»; {body}.\n"
               "2) **После рассмотрения ПЗ2** — программы: " + (", ".join(f"`{c}`" for c in robot) if robot else "файлы `Фамилия ИО-код-n.txt`") +

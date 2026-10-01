@@ -31,8 +31,8 @@ type Sheet struct {
 	buses   [][2]Pt
 	entries [][2]Pt
 	perp    bool
-	A4      bool   // лист А4 книжный (перечень элементов), иначе А3 альбомный
-	J       Jitter // «почерк» листа (jitter.go); нулевой — как Plain
+	A4      bool     // лист А4 книжный (перечень элементов), иначе А3 альбомный
+	J       Jitter   // «почерк» листа (jitter.go); нулевой — как Plain
 	Fixes   *Fixes   // правки студента (fixes.go); nil — нет
 	FixErrs []string // ошибки в правках (неизвестные обозначения и т.п.) — mpsgen падает с ними
 }

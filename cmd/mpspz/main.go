@@ -74,6 +74,7 @@ func main() {
 	d.Style = pz.PickDocStyle(*dstyle, fmt.Sprintf("%s|%d", st.GroupFull, p.M))
 	varsInc := render.Asm(p)
 
+	var warns []string // предупреждения по файлам студента (в report.md и карточку Issue)
 	switch *doc {
 	case "pz2":
 		if *initF {
@@ -111,9 +112,16 @@ func main() {
 			if title == "" {
 				title = id
 			}
-			// натуральный размер (8 px на мм), не шире поля страницы
-			wcm := float64(img.Bounds().Dx()) / 8 / 10
-			in.Flows = append(in.Flows, pz.FlowFig{ID: id, Title: title, File: pngName, WidthCm: min(wcm, 17), Text: flow.Describe(c)})
+			// натуральный размер (8 px на мм), не шире поля страницы и не выше листа (23 см под рисунок с подписью):
+			// длинную схему (вложенный цикл не режется на колонки) уменьшаем и предупреждаем — лучше разбить или упростить
+			wcm := min(float64(img.Bounds().Dx())/8/10, 17)
+			hcm := float64(img.Bounds().Dy()) / 8 / 10 * wcm / (float64(img.Bounds().Dx()) / 8 / 10)
+			if hcm > 23 {
+				wcm *= 23 / hcm
+				warns = append(warns, fmt.Sprintf("схема `%s` выше листа (%.0f мм) — уменьшена до высоты страницы; лучше разбить её "+
+					"на подпрограммы или упростить вложенные циклы (pz/flow/%s.flow)", id, hcm*10, id))
+			}
+			in.Flows = append(in.Flows, pz.FlowFig{ID: id, Title: title, File: pngName, WidthCm: wcm, Text: flow.Describe(c)})
 		}
 		pz.BuildPZ2(d, in)
 	case "pz1":
@@ -151,6 +159,9 @@ func main() {
 	}
 	rep := fmt.Sprintf("# %s: %s, %s, вариант %d\n\nФайл: `%s`. Мест «ДОПИШИ»: %d, осталось заполнить: %d (students/<ник>/pz/%s.md).\n\n%s",
 		strings.Replace(*doc, "pz", "ПЗ", 1), p.Student, st.GroupFull, p.M, name, len(d.Fills), left, *doc, todo.String())
+	if len(warns) > 0 {
+		rep += "\n## Предупреждения\n\n- " + strings.Join(warns, "\n- ") + "\n"
+	}
 	die(os.WriteFile(filepath.Join(out, "report.md"), []byte(rep), 0o644))
 	fmt.Print(rep)
 	if s := os.Getenv("GITHUB_STEP_SUMMARY"); s != "" {
