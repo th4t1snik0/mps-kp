@@ -22,8 +22,8 @@
 
 - Метка `курсач` должна существовать (Issues → Labels): форма ставит её сама, по ней срабатывает `.github/workflows/issue.yml`.
 - Бот коммитит в `main` от `github-actions[bot]` (только `students/<ник>/`) и запускает КМ-1/2/3 через `gh workflow run`
-  (пуш токеном GITHUB_TOKEN сам джобы не запускает). Нужны права Actions на запись: Settings → Actions → General →
-  Workflow permissions → **Read and write**.
+  (пуш токеном GITHUB_TOKEN сам джобы не запускает). Права токену выдают сами workflow (`permissions:` в yml), менять
+  настройки репо не нужно — если только организация не запрещает запись токену.
 - Команды в Issue принимаются от автора Issue и участников репо (OWNER/MEMBER/COLLABORATOR).
 
 ## Участники
