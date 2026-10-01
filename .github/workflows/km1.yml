@@ -25,6 +25,10 @@ on:
       student:
         description: "Ник студента — папка в students/ (make nick G=А-12 FIO=\"Рязанцев И.В.\" → a12_ryazantsev_iv)"
         required: true
+      next:
+        description: "После схемы собрать и ПЗ1 (КМ-2), и программы + ПЗ2 (КМ-3) по ней"
+        type: boolean
+        default: false
 
 # новый пуш отменяет ещё идущий прогон той же ветки; запуски Run workflow с разными вариантами не мешают друг другу
 concurrency:
@@ -33,6 +37,8 @@ concurrency:
 
 permissions:
   contents: write   # публикация результатов в ветку results
+  issues: write     # комментарии в Issue студента
+  actions: write    # КМ-1 с next запускает КМ-2/КМ-3
 
 jobs:
   build:
@@ -83,6 +89,15 @@ jobs:
           RUN_KIND: СХЕМА   # папка СХЕМА-N
         run: find build/ -name meta.json -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r scripts/publish.sh
 
+      - name: Дальше по новой схеме — КМ-2 и КМ-3 (next)
+        if: github.ref == 'refs/heads/main' && inputs.next
+        env:
+          GH_TOKEN: ${{ github.token }}
+          S: ${{ inputs.student }}
+        run: |
+          gh workflow run km2.yml --ref main -f student="$S"
+          ls students/"$S"/code/prog[123].a51 >/dev/null 2>&1 && gh workflow run km3.yml --ref main -f student="$S" || echo "программ ещё нет — КМ-3 не запускаю"
+
       - uses: actions/upload-artifact@v4
         if: steps.who.outputs.list != ''
         with:
@@ -92,6 +107,13 @@ jobs:
             build/
             !build/**/*.kicad_prl
           retention-days: 7
+
+      - name: Ошибка → комментарий в Issue студента
+        if: failure() && steps.who.outputs.list != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIST: ${{ steps.who.outputs.list }}
+        run: python3 scripts/issue_notify.py fail $LIST
 
   # Яндекс-диск — отдельной джобой: результаты в ветке results уже опубликованы основной, а загрузка на диск
   # (с ожиданием блокировок, когда КМ-1/2/3 пишут одновременно) не задерживает её.
@@ -112,3 +134,9 @@ jobs:
           YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
           YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
         run: find build/ -mindepth 3 -maxdepth 3 -type d -name .pub -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
+      - name: Комментарий в Issue студента (если ведётся через Issue)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: find build/ -mindepth 3 -maxdepth 3 -type d -name .pub -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/issue_notify.py ok

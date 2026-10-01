@@ -34,6 +34,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write     # комментарии в Issue студента
 
 jobs:
   pz1:
@@ -113,8 +114,16 @@ jobs:
             build/**/.pub/
             build/**/.run
             build/**/.pubdest
+            build/**/.nick
             build/.root
           retention-days: 7
+
+      - name: Ошибка → комментарий в Issue студента
+        if: failure() && steps.who.outputs.list != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIST: ${{ steps.who.outputs.list }}
+        run: python3 scripts/issue_notify.py fail $LIST
 
   # Яндекс-диск — отдельной джобой: результаты в ветке results уже опубликованы основной, а загрузка на диск
   # (с ожиданием блокировок, когда КМ-1/2/3 пишут одновременно) не задерживает её.
@@ -135,3 +144,9 @@ jobs:
           YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
           YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
         run: find build/ -mindepth 3 -maxdepth 3 -type d -name .pub -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
+      - name: Комментарий в Issue студента (если ведётся через Issue)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: find build/ -mindepth 3 -maxdepth 3 -type d -name .pub -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/issue_notify.py ok

@@ -39,6 +39,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write     # комментарии в Issue студента
 
 jobs:
   code:
@@ -121,8 +122,16 @@ jobs:
             build/**/.pub/
             build/**/.run
             build/**/.pubdest
+            build/**/.nick
             build/.root
           retention-days: 7
+
+      - name: Ошибка → комментарий в Issue студента
+        if: failure() && steps.who.outputs.list != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LIST: ${{ steps.who.outputs.list }}
+        run: python3 scripts/issue_notify.py fail $LIST
 
       - name: Итог по студентам
         if: steps.students.outputs.status == '1'
@@ -160,7 +169,7 @@ jobs:
   # (с ожиданием блокировок, когда КМ-1/2/3 пишут одновременно) не задерживает её.
   yadisk:
     needs: code
-    if: github.ref == 'refs/heads/main' && needs.code.outputs.list != ''
+    if: always() && github.ref == 'refs/heads/main' && needs.code.outputs.list != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     continue-on-error: true
@@ -175,3 +184,9 @@ jobs:
           YADISK_TOKEN: ${{ secrets.YADISK_TOKEN }}
           YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
         run: find build/ -mindepth 3 -maxdepth 3 -type d -name .pub -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/yadisk_upload.py
+      - name: Комментарий в Issue студента (если ведётся через Issue)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          YADISK_PUBLIC: ${{ vars.YADISK_PUBLIC || 'https://disk.yandex.ru/d/ai0wkudkDT9Tog' }}
+        run: find build/ -mindepth 3 -maxdepth 3 -type d -name .pub -exec dirname {} \; | tr '\n' '\0' | xargs -0 -r python3 scripts/issue_notify.py ok

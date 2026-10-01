@@ -1,0 +1,89 @@
+name: Issue курсача
+
+# Студент (или его нейронка) работает с курсачом через Issue «Мой курсач» — без прав на запись в репо:
+#  - создал/поправил форму → бот заводит students/<ник>/variant.yaml (+ students/<ник>/issue) и запускает КМ-1 (→ КМ-2, КМ-3);
+#  - команды в комментариях (/помощь, /заготовки, /prog1 + блок, /пз1 + блок, /правка + блок, /замечание …) → файлы в папку
+#    студента, коммит ботом и запуск нужных джоб. Результаты джобы пишут сюда же (scripts/issue_notify.py).
+# Пуш ботом (GITHUB_TOKEN) сам джобы не запускает — поэтому они запускаются явно (gh workflow run).
+# Команды принимаются только от автора Issue и участников репо; бот пишет только в students/<ник>/ этого Issue.
+on:
+  issues:
+    types: [opened, edited, reopened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  bot:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'курсач') && github.event.issue.state == 'open' &&
+      (github.event_name == 'issues' || github.event.comment.user.login == github.event.issue.user.login ||
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) &&
+      !endsWith(github.actor, '[bot]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Тексты Issue и комментария → файлы (в shell не подставляются)
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          printf '%s' "$ISSUE_BODY" > "$RUNNER_TEMP/issue.md"
+          printf '%s' "$COMMENT_BODY" > "$RUNNER_TEMP/comment.md"
+      - name: Разбор формы и команд
+        id: bot
+        env:
+          EVENT: ${{ github.event_name == 'issue_comment' && 'comment' || github.event.action }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_BODY_FILE: ${{ runner.temp }}/issue.md
+          COMMENT_FILE: ${{ runner.temp }}/comment.md
+        run: |
+          go build -o bin/mpsgen ./cmd/mpsgen && go build -o bin/mpscode ./cmd/mpscode && go build -o bin/mpspz ./cmd/mpspz
+          python3 scripts/issue_bot.py
+      - name: Коммит файлов студента
+        if: steps.bot.outputs.commit == '1'
+        env:
+          NICK: ${{ steps.bot.outputs.nick }}
+          N: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "students/$NICK"
+          git diff --cached --quiet && exit 0
+          git commit -q -m "students/$NICK: из Issue #$N"
+          for i in 1 2 3; do git pull -q --rebase origin main && git push -q origin HEAD:main && break; sleep 3; done
+      - name: Запуск джоб
+        if: steps.bot.outputs.dispatch != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NICK: ${{ steps.bot.outputs.nick }}
+          D: ${{ steps.bot.outputs.dispatch }}
+        run: |
+          for k in $D; do
+            case "$k" in
+              km1-next) gh workflow run km1.yml --ref main -f student="$NICK" -f next=true ;;
+              km1) gh workflow run km1.yml --ref main -f student="$NICK" ;;
+              km2) gh workflow run km2.yml --ref main -f student="$NICK" ;;
+              km3) gh workflow run km3.yml --ref main -f student="$NICK" ;;
+            esac
+          done
+      - name: Ответ в Issue
+        if: always() && steps.bot.outputs.reply != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R: ${{ steps.bot.outputs.reply }}
+        run: gh issue comment "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" --body-file "$R"

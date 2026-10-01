@@ -1,0 +1,51 @@
+name: Мой курсач
+description: Завести курсач (МПС ч.2) — схема, ПЗ1, ПЗ2 и проверка программ соберутся сами, результаты придут сюда и на Яндекс-диск
+title: "Курсач: Фамилия И.О., группа, вариант"
+labels: ["курсач"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        После создания бот заведёт вашу папку в репо, соберёт схему (КМ-1) и ответит комментарием со ссылками.
+        Дальше — команды в комментариях (`/помощь`): программы, тексты ПЗ, правки по замечаниям. Пишет их хоть человек, хоть нейронка.
+  - type: input
+    id: fio
+    attributes:
+      label: ФИО
+      description: Как в рамке схемы — «Фамилия И.О.»
+      placeholder: Рязанцев И.В.
+    validations:
+      required: true
+  - type: dropdown
+    id: group
+    attributes:
+      label: Группа
+      description: По ТЗ-2026 (год набора 23 → в рамке «А-12-23»)
+      options: ["А-06", "А-07", "А-08", "А-09", "А-12", "А-17", "Аэ-21"]
+    validations:
+      required: true
+  - type: input
+    id: m
+    attributes:
+      label: Вариант
+      description: Номер варианта M, 1…30
+      placeholder: "17"
+    validations:
+      required: true
+  - type: input
+    id: checker
+    attributes:
+      label: Преподаватель
+      description: В рамку (Пров.)
+      value: Михалин С.Н.
+    validations:
+      required: true
+  - type: dropdown
+    id: style
+    attributes:
+      label: Стиль листа
+      description: авто — свой для группы и варианта; A (как Рязанцев 2025), B (Осипова 2025), C (Сорокина 2023), D (Базарнов 2023)
+      options: ["авто", "A", "B", "C", "D"]
+      default: 0
+    validations:
+      required: true

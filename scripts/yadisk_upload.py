@@ -127,6 +127,8 @@ def main(dirs):
             n = max(n, last_run(cur, kind) + 1)
         dst = f"{cur}/{kind}-{n}{rest}"
         print(f"яндекс-диск: {dst} — {put_tree(pub, dst)} файлов")
+        with open(os.path.join(d, ".disk"), "w", encoding="utf-8") as f:  # для комментария в Issue (issue_notify.py)
+            f.write(f"{dest}/{kind}-{n}{rest}\n")
 
 
 def exists(path):
