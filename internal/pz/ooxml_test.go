@@ -15,3 +15,18 @@ func TestNormalizeOOXML(t *testing.T) {
 		t.Error(errs)
 	}
 }
+
+func TestStudentText(t *testing.T) {
+	in := "# Мой заголовок\nПуть C:\\Keil\\A51, **жирный**.\n```{=openxml}\n<w:p/>\n```\nКонец `x`{=openxml}."
+	got := studentText(in)
+	for _, bad := range []string{"\n#", "{=openxml}", "<w:p/>"} {
+		if strings.Contains("\n"+got, bad) {
+			t.Errorf("осталось %q в %q", bad, got)
+		}
+	}
+	for _, want := range []string{"**Мой заголовок**", `C:\\Keil\\A51`, "**жирный**"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("нет %q в %q", want, got)
+		}
+	}
+}

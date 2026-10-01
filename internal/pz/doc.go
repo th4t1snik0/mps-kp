@@ -212,8 +212,25 @@ func (d *Doc) Code(text string) {
 
 // Fill — место для текста студента: если в students/<ник>/pz/pzN.md раздел «## id» заполнен — вставляется он,
 // иначе — подсвеченная подсказка «✍ ДОПИШИ: …».
+var (
+	reRawBlock = regexp.MustCompile("(?s)(?:```+|~~~+)[ \\t]*\\{=[^}]*\\}.*?\\n[ \\t]*(?:```+|~~~+)")
+	reRawSpan  = regexp.MustCompile("`[^`]*`\\{=[^}]*\\}")
+	reHeading  = regexp.MustCompile(`(?m)^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$`)
+)
+
+// studentText — текст студента для вставки в ПЗ: обычная разметка (жирный, курсив, списки) работает, но
+// служебные вставки pandoc ({=openxml} и т.п.) вырезаются (могут сломать docx), свои заголовки «# …» — жирным абзацем
+// (иначе сбивают нумерацию разделов), обратные слэши — буквально (C:\Keil не превращается в «C:»).
+func studentText(s string) string {
+	s = reRawBlock.ReplaceAllString(s, "")
+	s = reRawSpan.ReplaceAllString(s, "")
+	s = reHeading.ReplaceAllString(s, "**$1**")
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	return strings.TrimSpace(s)
+}
+
 func (d *Doc) Fill(id, title, hint string) {
-	txt := strings.TrimSpace(d.Student[id])
+	txt := studentText(d.Student[id])
 	f := Fill{ID: id, Title: title, Hint: hint, Done: txt != ""}
 	d.Fills = append(d.Fills, f)
 	if f.Done {
@@ -260,7 +277,7 @@ func Num(v float64, prec int) string {
 // FillOr — место с готовым текстом по умолчанию: если студент написал свой раздел — берётся он, иначе — generated
 // (не подсвечивается и не считается незаполненным; в файле студента раздел остаётся, чтобы заменить при желании).
 func (d *Doc) FillOr(id, title, hint, generated string) {
-	txt := strings.TrimSpace(d.Student[id])
+	txt := studentText(d.Student[id])
 	d.Fills = append(d.Fills, Fill{ID: id, Title: title, Hint: hint + " (необязательно: без текста в документ идёт пересказ схемы)", Done: true})
 	if txt == "" {
 		txt = esc(generated)
