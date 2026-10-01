@@ -31,13 +31,13 @@ var Styles = map[string]Style{
 	"D": {Name: "D", GostGates: true, GostICs: true, Perp: true, BusNames: true, Conn: ConnContNet, FullFrame: true},
 }
 
-// PickStyle — стиль по имени; пусто или «auto» — по ФИО (чтобы у соседей по группе листы различались), без ФИО — A.
+// PickStyle — стиль по имени; пусто — A; «auto» — по ФИО (чтобы у соседей по группе листы различались).
 func PickStyle(name, fio string) Style {
 	name = strings.ToUpper(strings.TrimSpace(name))
 	if s, ok := Styles[name]; ok {
 		return s
 	}
-	if strings.TrimSpace(fio) == "" {
+	if name != "AUTO" || strings.TrimSpace(fio) == "" {
 		return Styles["A"]
 	}
 	h := fnv.New32a()
