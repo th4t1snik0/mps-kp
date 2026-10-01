@@ -78,7 +78,10 @@ def ok(d):
         if m:
             left = int(m.group(1))
             lines.append("Все места «ДОПИШИ» заполнены." if left == 0 else
-                         f"Осталось мест «ДОПИШИ»: **{left}** — дописать в `students/{nick}/pz/{doc}.md` и прислать командой `/{cmd}` + текст файла.")
+                         (f"Осталось мест «ДОПИШИ»: **{left}** — дописать в `students/{nick}/pz/{doc}.md` и прислать командой `/{cmd}` + текст файла."
+                          if os.path.exists(os.path.join("students", nick, "pz", doc + ".md")) else
+                          f"Осталось мест «ДОПИШИ»: **{left}** — сначала `/заготовки` (появится `pz/{doc}.md` с подсказками), "
+                          f"потом дописать и прислать `/{cmd}` + текст файла."))
         code = read(os.path.join(d, ".pub", "программы", "report.md"))
         if code:
             bad = len(re.findall(r"^## ❌", code, re.M))

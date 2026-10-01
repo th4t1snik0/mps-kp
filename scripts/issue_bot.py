@@ -240,8 +240,17 @@ def main():
                 else:
                     reply.append("Заготовку ПЗ1 положу, когда будет схема: дождитесь комментария со схемой и пришлите `/заготовки` ещё раз.")
                 changed.append(f"students/{nick}/")
-                reply.append(f"Заготовки положены в `students/{nick}/`: " + ", ".join(done) +
-                             ". Правьте и присылайте файлы целиком командами `/prog1`, `/пз1`, `/пз2`, `/flow …`.")
+                repo = os.environ.get("GITHUB_REPOSITORY", "")
+                raw = f"https://raw.githubusercontent.com/{repo}/main/students/{nick}"
+                links = [f"[code/prog{n}.a51]({raw}/code/prog{n}.a51)" for n in (1, 2, 3)] + \
+                        [f"[pz/{f}]({raw}/pz/{f})" for f in ("pz1.md", "pz2.md") if f"pz/{f}" in done or f == "pz2.md"]
+                reply.append(f"Заготовки положены в `students/{nick}/`: " + ", ".join(done) + ".\n\n"
+                             "**Для нейронки** — прочитать файлы по прямым ссылкам (появятся через минуту, после коммита бота): " +
+                             " · ".join(links) + f" · схемы алгоритмов — `students/{nick}/pz/flow/`.\n"
+                             f"Как писать программы — https://github.com/{repo}/blob/main/docs/code-guide.md (раздел 0), "
+                             f"ПЗ — https://github.com/{repo}/blob/main/docs/pz-guide.md.\n\n"
+                             "Готовое присылайте **файлом целиком**: комментарий `/prog1` и сразу под ним блок ```asm … ``` "
+                             "(так же `/prog2`, `/prog3`, `/пз1`, `/пз2`, `/flow <имя>`) — бот запишет и проверит.")
             elif cmd in ("схема", "км1", "km1"):
                 dispatch.append("km1")
             elif cmd in ("всё", "все", "all"):
