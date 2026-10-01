@@ -59,6 +59,10 @@ func TestBuildPZ2(t *testing.T) {
 	if err := Build(d, out); err != nil {
 		t.Fatal(err)
 	}
+	// порядок элементов OOXML — иначе Word «восстанавливает» документ и раскладывает криво (LibreOffice прощает)
+	if errs, err := CheckOOXML(out); err != nil || len(errs) > 0 {
+		t.Errorf("OOXML для Word: %v %v", err, errs)
+	}
 	txt, err := exec.Command(Pandoc(), out, "-t", "plain").Output()
 	if err != nil {
 		t.Fatal(err)

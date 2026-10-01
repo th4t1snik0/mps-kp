@@ -37,5 +37,6 @@ func Build(d *Doc, out string) error {
 		return fmt.Errorf("pandoc: %v\n%s", err, b)
 	}
 	os.Remove(refPath)
-	return nil
+	// порядок элементов по схеме OOXML: Word строже LibreOffice (см. ooxml.go)
+	return normalizeDocx(out)
 }
