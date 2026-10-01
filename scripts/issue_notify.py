@@ -82,8 +82,15 @@ def ok(d):
         code = read(os.path.join(d, ".pub", "программы", "report.md"))
         if code:
             bad = len(re.findall(r"^## ❌", code, re.M))
-            lines.append(f"Программы: {'❌ есть ошибки — ' if bad else '✅ '}[отчёт проверки]({blob}/{q('программы/report.md')})"
-                         + ("" if bad else "; файлы для робота — `программы/Фамилия ИО-код-n.txt`"))
+            lines.append(f"Программы: {'❌ есть ошибки — ' if bad else '✅ '}[отчёт проверки]({blob}/{q('программы/report.md')})")
+            pd = os.path.join(d, ".pub", "программы")
+            robot = sorted(f for f in os.listdir(pd) if f.endswith(".txt"))
+            src = sorted(f for f in os.listdir(pd) if f.endswith(".a51"))
+            if robot:
+                lines.append("- файлы для робота (`vars.inc` уже вклеен): " + " · ".join(f"[{f}]({blob}/{q('программы/' + f)})" for f in robot))
+            if src:
+                lines.append("- исходники: " + " · ".join(f"[{f}]({blob}/{q('программы/' + f)})" for f in src) +
+                             " (листинги `.lst`, `.hex` — в папке прогона)")
     lines += send_hint(d, run, dest, files, blob)
     disk = read(os.path.join(d, ".disk")) or path
     if PUBLIC:
