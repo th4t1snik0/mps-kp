@@ -102,8 +102,9 @@ func titleTable(rows []titleRow, graphs bool) string {
 		b.WriteString(`</w:tr>`)
 	}
 	b.WriteString(`</w:tbl>`)
-	// разрыв страницы — в крошечном абзаце, чтобы он поместился под таблицей на том же листе
-	b.WriteString(`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:ind w:left="0" w:firstLine="0"/><w:rPr><w:sz w:val="2"/></w:rPr></w:pPr><w:r><w:rPr><w:sz w:val="2"/></w:rPr><w:br w:type="page"/></w:r></w:p>`)
+	// после таблицы Word требует абзац — крошечный, без разрыва страницы: следующий заголовок (АННОТАЦИЯ, СОДЕРЖАНИЕ) сам
+	// начинается с новой страницы (pageBreakBefore). Явный разрыв здесь Word переносит на 2-й лист — тот оставался пустым.
+	b.WriteString(`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="20" w:lineRule="exact"/><w:ind w:left="0" w:firstLine="0"/><w:rPr><w:sz w:val="2"/></w:rPr></w:pPr></w:p>`)
 	return b.String()
 }
 
