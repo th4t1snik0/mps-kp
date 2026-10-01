@@ -47,7 +47,7 @@ VCC 8, 13, 57; GND 5, 9, 24, 41; N/C 23, 58.
 
 ## Времена (для ПЗ1)
 
-- IDT7005 S55: tRC=tAA=tACE 55, tAOE 30, tWC 55, tWP 40, tAS 0, tDW 30, tDH 0, tEW/tAW 45; tAPS 5; tWDD 80, tDDD 65 нс. S70 — только military.
+- IDT7005 S55 (`docs/group/idt7005 [en].pdf`, столбец IDT7005X55: чтение с. 8, запись с. 9; сверено 01.10.2026): tRC=tAA=tACE 55, tAOE 30, tWC 55, tWP 40, tAS 0, tDW 30, tDH 0, tEW/tAW 45; tAPS 5; tWDD 80, tDDD 65 нс. S70 — только military.
 - AT89S53 @12 МГц: tLHLL≥127, tAVLL≥43, tLLAX≥48, tRLRH/tWLWH≥400, tRLDV≤252, tRHDZ≤97, tLLDV≤517, tAVDV≤585, tLLWL 200..300, tAVWL≥203, tQVWX≥23, tQVWH≥433, tWHQX≥33 нс.
 - Токи AT89S53: ≤10 мА/вывод, ≤26 P0, ≤15 P1–P3, ≤71 всего.
 
