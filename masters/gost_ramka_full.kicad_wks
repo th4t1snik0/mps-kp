@@ -468,4 +468,29 @@
 		(start 390 282)
 		(end 320 268)
 	)
+	(tbtext "Группа А-12-22, Вариант 12, Э3"
+		(name "графа 26")
+		(pos 355 275)
+		(rotate 180)
+		(font
+			(face "GOST type A")
+			(size 3.5 3.5) italic)
+		(justify center)
+	)
+	(tbtext "Копировал"
+		(name "")
+		(pos 115 -7.5)
+		(font
+			(face "GOST type A")
+			(size 3.5 3.5) italic)
+		(justify center)
+	)
+	(tbtext "Формат А3"
+		(name "")
+		(pos 40 -7.5)
+		(font
+			(face "GOST type A")
+			(size 3.5 3.5) italic)
+		(justify center)
+	)
 )
