@@ -510,8 +510,8 @@ func prog3Ind(h *harness) {
 	T := float64(p.T3ms) * ms
 	measure := func(name string, code byte, again float64) {
 		log = nil
+		h.toProc() // сначала доиграть возможный обработчик (его pop ACC затёр бы аргумент), потом аргумент в A
 		h.s.SetA(code)
-		h.toProc()
 		h.runTo(10*ms, h.procRet)
 		if len(log) == 0 {
 			h.r.fail(name, "вызов не записал символ в индикатор")
@@ -522,8 +522,8 @@ func prog3Ind(h *harness) {
 			h.runTo(10*ms, h.stopAt)
 			h.wait(again)
 			log = nil
-			h.s.SetA(7)
 			h.toProc()
+			h.s.SetA(7)
 			h.runTo(10*ms, h.procRet)
 			if len(log) == 0 {
 				h.r.fail(name, "повторный вызов не записал символ")

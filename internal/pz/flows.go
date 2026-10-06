@@ -2,6 +2,8 @@ package pz
 
 import (
 	"embed"
+	"fmt"
+	"strings"
 
 	"mpskp/internal/variant"
 )
@@ -20,6 +22,8 @@ func DefaultFlows(p *variant.Params) map[string][]byte {
 		if err != nil {
 			panic(err)
 		}
+		// тик таймера 0 по варианту (в заготовках — «1 мс»)
+		b = []byte(strings.ReplaceAll(string(b), " 1 мс", fmt.Sprintf(" %d мс", p.Y1.TickMs)))
 		out[e.Name()] = b
 	}
 	return out

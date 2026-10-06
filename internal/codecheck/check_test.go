@@ -181,3 +181,21 @@ func TestTemplates(t *testing.T) {
 		t.Errorf("заготовок проверено %d, ждали 6", len(seen))
 	}
 }
+
+// Индикатор проходит при любом зерне случайного ОЗУ. Гонку из отчёта по Issue #9 (аргумент в A ставился до того, как toProc
+// доигрывал обработчик Timer0, и его pop ACC затирал A) этот тест на эталоне не воспроизводит — она зависит от тайминга кода
+// студента; исправлено порядком toProc → SetA в progs.go.
+func TestRefAnySeed(t *testing.T) {
+	for _, m := range []int{15, 18} { // индикатор: ОА и ОК
+		p := params(t, "А-12", m)
+		if p.M%3 != 0 {
+			continue
+		}
+		for seed := 1; seed <= 25; seed++ {
+			r := Check(Input{Params: p, Prog: 3, Src: refFor(t, p, 3), Name: "prog3.a51", VarsInc: render.Asm(p), Seed: seed})
+			if r.Worst() == Fail {
+				t.Errorf("M=%d зерно %d:\n%s", m, seed, r.Markdown())
+			}
+		}
+	}
+}
