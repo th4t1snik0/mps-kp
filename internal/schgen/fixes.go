@@ -14,10 +14,10 @@ type Fixes struct {
 	BOMNames map[string]string     `yaml:"bom_names"` // наименование в перечне целиком: R10: "С2-33Н-0,125 300 Ом ±5 %"
 	BOMNotes map[string]string     `yaml:"bom_notes"` // «Примечание» в перечне: DD8: "Двухпортовое ОЗУ 8К×8"
 	NoteAdd  []string              `yaml:"note_add"`  // строки в конец «Примечания» на листе (номер ставится сам)
-	Move     map[string][2]float64 `yaml:"move"`      // сдвиг, мм [вправо, вниз]: note, dec, power, sheet
+	Move     map[string][2]float64 `yaml:"move"`      // сдвиг, мм [вправо, вниз]: note, power, sheet
 }
 
-var moveKeys = map[string]bool{"note": true, "dec": true, "power": true, "sheet": true}
+var moveKeys = map[string]bool{"note": true, "power": true, "sheet": true} // dec — дешифратор теперь в столбце защёлок, не двигается
 
 // applyMoves — сдвиги из fixes поверх «почерка» (до построения листа).
 func (f *Fixes) applyMoves(j *Jitter) []string {
@@ -33,7 +33,7 @@ func (f *Fixes) applyMoves(j *Jitter) []string {
 		case "sheet":
 			j.ShiftX, j.ShiftY = j.ShiftX+d[0], j.ShiftY+d[1]
 		default:
-			errs = append(errs, fmt.Sprintf("move: «%s» — нельзя, можно: note, dec, power, sheet", k))
+			errs = append(errs, fmt.Sprintf("move: «%s» — нельзя, можно: note, power, sheet", k))
 		}
 	}
 	return errs

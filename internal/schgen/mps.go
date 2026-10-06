@@ -57,12 +57,18 @@ const (
 	yTop = 29.21  // верхняя горизонтальная шина
 	xBL  = 48.26  // шина слева от МК (P1/P3)
 	xBM  = 100.33 // шина справа от МК
-	xBI  = 171.45 // шина слева от IDT7005
-	xBR  = 231.14 // шина справа от IDT7005
-	yH1  = 127.0  // шина под МК к клавиатуре
-	xBK  = 22.86  // шина к регистру столбцов
-	yH2  = 138.43 // шина к нижнему правому блоку
-	xBD  = 198.12 // вертикальная шина нижнего правого блока
+	// правая верхняя часть (IDT7005, её шины, разъёмы XS2/XS3) сдвинута вправо на dxR: освобождено место под столбец регистра Y2,
+	// а дешифратор встал в столбец защёлок под защёлкой адреса (как на рис. Прил. А методички; замечание руководителя 06.10.2026 —
+	// «нумерация элементов»: дешифратор справа сверху получал последний номер)
+	dxR  = 43.18
+	xBI  = 171.45 + dxR // шина слева от IDT7005
+	xBR  = 231.14 + dxR // шина справа от IDT7005
+	xBY  = 162.56       // шина данных регистра Y2 и выходов дешифратора (от шины yH2 вверх)
+	xY2B = 205.74       // шина выходов регистра Y2 (вниз и вправо под IDT7005 к XS3)
+	yH1  = 127.0        // шина под МК к клавиатуре
+	xBK  = 22.86        // шина к регистру столбцов
+	yH2  = 138.43       // шина к нижнему правому блоку
+	xBD  = 198.12       // вертикальная шина нижнего правого блока
 )
 
 type builder struct {
@@ -189,9 +195,7 @@ func Build(lib *Lib, v Variant, seed string) *Sheet {
 	b.rowsAndInt()
 	b.indicator()
 	if v.Decoder {
-		mark := b.mark()
-		b.decoder()
-		b.moveSince(mark, b.Sheet.J.DecDX, b.Sheet.J.DecDY)
+		b.decoder() // место фиксировано (столбец защёлок); J.DecDX/DecDY больше не используются
 	}
 	b.buses()
 	b.Renumber()
@@ -332,20 +336,19 @@ func (b *builder) addrLatch() {
 // ---------------------------------------------------------------- регистр Y2 DD5 + DD1.2
 
 func (b *builder) y2Reg() {
-	u := b.role("latchY2", b.latch573("DD5", Pt{142.24, 109.22}))
+	u := b.role("latchY2", b.latch573("DD5", Pt{182.88, 109.22}))
 	for i := 0; i < 8; i++ {
-		b.tapLeft(u.Pin(strconv.Itoa(2+i)), xBM, fmt.Sprintf("AD%d", i))
-		q := u.Pin(strconv.Itoa(19 - i))
-		e := Pt{160.02, q.Y}
-		b.Wire(q, e)
-		b.BusEntry(e, 2.54, 2.54)
-		b.Label(fmt.Sprintf("Y2_%d", i), Pt{q.X + 1.27, q.Y}, false)
+		b.tapLeft(u.Pin(strconv.Itoa(2+i)), xBY, fmt.Sprintf("AD%d", i))
+		b.tapRight(u.Pin(strconv.Itoa(19-i)), xY2B, fmt.Sprintf("Y2_%d", i))
 	}
-	// Load = ИЛИ-НЕ(CSy2, WR)
+	// Load = ИЛИ-НЕ(CSy2, WR): вентиль в столбце защёлок под дешифратором, входы — с шины у МК, выход через шину xBY к Load
 	ld := u.Pin("11")
-	g := b.role("norY2", b.Sym("74HC02", "DD1", "74HC02", Pt{ld.X - 11.43, ld.Y}, SymOpt{Unit: 1,
-		RefAt: ptr(Pt{ld.X - 13.97, ld.Y + 7.62}), RefJust: "left", HideVal: true})) // под вентилем: сверху идёт провод AD7
-	b.Wire(g.Pin("1"), ld)
+	// ниже Load на 5,08: над вентилем — земля дешифратора
+	gy := ld.Y + 5.08
+	g := b.role("norY2", b.Sym("74HC02", "DD1", "74HC02", Pt{147.32, gy}, SymOpt{Unit: 1,
+		RefAt: ptr(Pt{144.78, gy + 7.62}), RefJust: "left", HideVal: true}))
+	o := g.Pin("1")
+	b.Wire(o, Pt{o.X + 3.81, o.Y}, Pt{o.X + 3.81, ld.Y}, ld)
 	b.tapLeft(g.Pin("2"), xBM, nCSy2)
 	b.tapLeft(g.Pin("3"), xBM, nWR)
 }
@@ -353,8 +356,8 @@ func (b *builder) y2Reg() {
 // ---------------------------------------------------------------- IDT7005 DD8
 
 func (b *builder) idt() {
-	at := Pt{200.66, 81.28}
-	r, v := Pt{205.74, 34.29}, Pt{205.74, 36.83}
+	at := Pt{200.66 + dxR, 81.28}
+	r, v := Pt{205.74 + dxR, 34.29}, Pt{205.74 + dxR, 36.83}
 	u := b.role("idt", b.Sym("IDT7005", "DD8", "IDT7005S55PF", at, SymOpt{RefAt: &r, ValAt: &v, RefJust: "left", ValJust: "left"}))
 	// питание: три VCC сверху связаны, GND снизу
 	vt := 35.56
@@ -382,7 +385,7 @@ func (b *builder) idt() {
 		b.tapLeft(u.Pin(n), xBI, fmt.Sprintf("AD%d", i))
 	}
 	// R/WL, BUSYL, SEML → +5 В (левый порт МК только читает; BUSY-вход в slave не блокирует, семафоры не используются)
-	xl := 185.42
+	xl := 185.42 + dxR
 	for _, n := range []string{"61", "42", "60"} {
 		b.Wire(u.Pin(n), Pt{xl, u.Pin(n).Y})
 	}
@@ -408,7 +411,7 @@ func (b *builder) idt() {
 	// правый порт — по методичке (Прил. А): адрес и выбор — с шины МК (те же A0–A12 и CS_buf, что у левого порта),
 	// запись — WR МК, данные — с разъёма внешнего устройства; OER = 1 (порт только пишет). МК командой movx @DPTR
 	// записывает в ячейку «головы» байт, выставленный внешним устройством; строб X2 — только прерывание МК.
-	xr := 215.9
+	xr := 215.9 + dxR
 	b.tapRight(u.Pin("22"), xBR, nCSbuf)
 	b.tapRight(u.Pin("20"), xBR, nWR)
 	oer := u.Pin("19")
@@ -439,7 +442,7 @@ func (b *builder) idt() {
 // ---------------------------------------------------------------- разъёмы XS2 (X2), XS3 (Y)
 
 const (
-	xConn = 256.54 // точка подключения выводов разъёмов
+	xConn = 256.54 + dxR // точка подключения выводов разъёмов
 	yXS2  = 58.42
 	yXS3  = 106.68
 )
@@ -480,7 +483,7 @@ func (b *builder) conn(role, which, sym, ref string, at Pt) *Comp {
 }
 
 func (b *builder) placeConnXY() {
-	const bx = 250.19 // шины к разъёмам
+	const bx = 250.19 + dxR // шины к разъёмам
 	// XS2: строб X2 → вход прерывания, данные X2 → правый порт IDT
 	c := b.conn("xsX2", "x2", "CONN_X2", "XS2", Pt{xConn, yXS2})
 	stb := cp(c, 1)
@@ -520,7 +523,7 @@ func (b *builder) placeConnXY() {
 	b.gnd(Pt{gp.X - 1.27, gp.Y + 1.27})
 	// шина Y2: от DD5 вниз, вправо под IDT, вверх к разъёму
 	// ниже земли IDT7005 (корпус удлинён на 2,54) и между отводами XS3
-	b.Bus(Pt{162.56, 96.52 + 2.54}, Pt{162.56, 134.62}, Pt{bx, 134.62})
+	b.Bus(Pt{xY2B, 96.52 + 2.54}, Pt{xY2B, 134.62}, Pt{bx, 134.62})
 	b.Bus(Pt{bx, cp(c, 3).Y + 2.54}, Pt{bx, cp(c, 10).Y + 2.54})
 }
 
@@ -865,25 +868,20 @@ func refRanges(cs []*Comp) string {
 // ---------------------------------------------------------------- дешифратор CS (ТЗ-2026, рис. 6)
 
 func (b *builder) decoder() {
-	at := Pt{330.2, 66.04}
+	// в столбце защёлок под защёлкой адреса (рис. Прил. А методички: DC рядом с RG); адрес и CS_EN — с шины у МК, выходы CS — на шину xBY
+	at := Pt{142.24, 101.6}
 	u := b.role("dec", b.Sym("74HC138", "DD11", "74HC138", at, b.icLabels(Pt{at.X, at.Y - 15.24})))
 	b.vcc(u.Pin("16"))
 	b.gnd(u.Pin("8"))
-	// адрес A13..A15 → A0..A2
 	for i, n := range []string{"1", "2", "3"} {
-		p := u.Pin(n)
-		e := Pt{p.X - 12.7, p.Y}
-		b.Wire(e, p)
-		b.Label(fmt.Sprintf("A%d", 13+i), e, false)
+		b.tapLeft(u.Pin(n), xBM, fmt.Sprintf("A%d", 13+i))
 	}
 	// Ē0, Ē1 → GND; E2 ← CS_EN
 	e0, e1 := u.Pin("4"), u.Pin("5")
 	xg := e0.X - 2.54
 	b.Wire(e0, Pt{xg, e0.Y}, Pt{xg, e1.Y}, e1)
 	b.Power("GND", Pt{xg, e0.Y}, 270)
-	e2 := u.Pin("6")
-	b.Wire(Pt{e2.X - 12.7, e2.Y}, e2)
-	b.Label("CS_EN", Pt{e2.X - 12.7, e2.Y}, false)
+	b.tapLeft(u.Pin("6"), xBM, "CS_EN")
 	// выходы Yn → CS по варианту
 	yPin := []string{"15", "14", "13", "12", "11", "10", "9", "7"}
 	cs := map[string]string{b.v.CS.Buf: nCSbuf, b.v.CS.Y2: nCSy2, b.v.CS.Ind: nCSind, b.v.CS.Kb: nCSkb}
@@ -894,9 +892,7 @@ func (b *builder) decoder() {
 			b.nc(p)
 			continue
 		}
-		e := Pt{p.X + 12.7, p.Y}
-		b.Wire(p, e)
-		b.Label(name, e, true)
+		b.tapRight(p, xBY, name)
 	}
 }
 
@@ -909,7 +905,7 @@ func (b *builder) busNames() {
 	case st.BusNames: // ГОСТ: шины Bx
 		t("B1", Pt{xBM + 1.27, yTop + 1.27})
 		t("B1", Pt{xBD + 1.27, yH2 + 1.27})
-		t("B2", Pt{163.83, 128.27})
+		t("B2", Pt{xY2B + 1.27, 128.27})
 		t("B3", Pt{88.9, kbColY - 3.81})
 		t("B4", Pt{259.08 + 1.27, 148.59})
 		t("B5", Pt{281.94 + 1.27, 148.59})
@@ -925,4 +921,5 @@ func (b *builder) buses() {
 	b.Bus(Pt{xBI, yTop}, Pt{xBI, 121.92})
 	b.Bus(Pt{xBM, yH1}, Pt{xBK, yH1}, Pt{xBK, 177.8})
 	b.Bus(Pt{xBM, yH2}, Pt{xBD, yH2}, Pt{xBD, 218.44})
+	b.Bus(Pt{xBY, 88.9}, Pt{xBY, yH2})
 }

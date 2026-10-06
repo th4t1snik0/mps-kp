@@ -430,6 +430,17 @@ func Overlaps(src string) ([]string, error) {
 			}
 		}
 	}
+	// знак питания/земли не на чужом корпусе и не на выводе другого элемента
+	for _, p := range pbodies {
+		for _, it := range items {
+			switch {
+			case it.kind == "body" && p.b.shrink(0.1).hit(it.b.shrink(0.1)):
+				add("знак питания %s на корпусе %s около (%.1f; %.1f) мм", p.owner, it.owner, p.b.x0, p.b.y0)
+			case it.kind == "pin" && segHit(it.a, it.z, p.b.shrink(0.1)):
+				add("знак питания %s на выводе %s около (%.1f; %.1f) мм", p.owner, it.owner, p.b.x0, p.b.y0)
+			}
+		}
+	}
 	// знак питания/земли не перечёркнут шиной
 	for _, p := range pbodies {
 		for _, w := range buses {
