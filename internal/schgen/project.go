@@ -7,7 +7,8 @@ package schgen
 //   - lib_symbol_issues / footprint_link_issues — символы встроены в схему, библиотека mps не подключена;
 //   - net_not_bus_member — шины на листе графические (как в принятой схеме), связи идут по меткам;
 //   - missing_unit / missing_input_pin / missing_power_pin — неиспользуемые вентили по ГОСТ не рисуют,
-//     их входы и питание описаны в «Примечании».
+//     их входы и питание описаны в «Примечании»;
+//   - pin_not_connected — свободные выводы без креста KiCad (в ГОСТ его нет); список свободных сверяет netlist-тест.
 const Project = `{
   "erc": {
     "rule_severities": {
@@ -17,7 +18,8 @@ const Project = `{
       "net_not_bus_member": "ignore",
       "missing_unit": "ignore",
       "missing_input_pin": "ignore",
-      "missing_power_pin": "ignore"
+      "missing_power_pin": "ignore",
+      "pin_not_connected": "ignore"
     }
   },
   "schematic": {

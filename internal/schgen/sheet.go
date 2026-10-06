@@ -31,10 +31,12 @@ type Sheet struct {
 	buses   [][2]Pt
 	entries [][2]Pt
 	perp    bool
-	A4      bool     // лист А4 книжный (перечень элементов), иначе А3 альбомный
-	J       Jitter   // «почерк» листа (jitter.go); нулевой — как Plain
-	Fixes   *Fixes   // правки студента (fixes.go); nil — нет
-	FixErrs []string // ошибки в правках (неизвестные обозначения и т.п.) — mpsgen падает с ними
+	A4      bool                   // лист А4 книжный (перечень элементов), иначе А3 альбомный
+	J       Jitter                 // «почерк» листа (jitter.go); нулевой — как Plain
+	Fixes   *Fixes                 // правки студента (fixes.go); nil — нет
+	FixErrs []string               // ошибки в правках (неизвестные обозначения и т.п.) — mpsgen падает с ними
+	NC      []Pt                   // выводы, свободные намеренно (NoConnect)
+	numCols map[string][][]colItem // столбцы нумерации (Renumber) — для проверки NumberingDoubts
 }
 
 type TitleBlock struct {
@@ -163,8 +165,8 @@ func (s *Sheet) Sym(sym, ref, value string, at Pt, o SymOpt) *Comp {
 		if hide {
 			pr.Kids = append(pr.Kids, L("hide", A("yes")))
 		}
-		// у символа, повёрнутого на 90/270, KiCad зеркалит выравнивание подписи
-		if o.Rot%180 != 0 {
+		// у символа, повёрнутого на 90°, KiCad зеркалит выравнивание подписи (на 270° — нет: проверено по PNG, VD1–VD3)
+		if (o.Rot%360+360)%360 == 90 {
 			switch just {
 			case "left":
 				just = "right"
@@ -307,7 +309,24 @@ func (s *Sheet) emitBuses() {
 		if !wireEnd[key(w)] {
 			w, bp = bp, w
 		}
-		bi, ok := onBus(bp)
+		// шина, к которой отвод встаёт перпендикулярно проводу (на стыке двух шин onBus может вернуть не ту)
+		bi, ok := -1, false
+		horizWire := true // направление провода, к которому подходит отвод
+		for _, ww := range s.wires {
+			if ww[0].eq(w) || ww[1].eq(w) {
+				horizWire = abs(ww[0].Y-ww[1].Y) < 0.01
+				break
+			}
+		}
+		for i, b := range s.buses {
+			if !(bp.eq(b[0]) || bp.eq(b[1]) || onSegInner(b[0], b[1], bp)) {
+				continue
+			}
+			vert := abs(b[0].X-b[1].X) < 0.01
+			if !ok || vert == horizWire {
+				bi, ok = i, true
+			}
+		}
 		if !ok {
 			continue
 		}
@@ -370,9 +389,10 @@ func (s *Sheet) VLabel(name string, at Pt) {
 		L("uuid", Q(s.uuid()))))
 }
 
-func (s *Sheet) NoConnect(at Pt) {
-	s.items = append(s.items, L("no_connect", L("at", F(at.X), F(at.Y)), L("uuid", Q(s.uuid()))))
-}
+// NoConnect — вывод, оставленный свободным намеренно. Крест KiCad на лист не ставим: в ГОСТ его нет, и он перечёркивает
+// номер вывода (замечание руководителя 06.10.2026, «пересечения УГО»); ERC «вывод не подключён» выключен в Project,
+// а что свободны только эти выводы — проверяет netlist-тест по списку NC.
+func (s *Sheet) NoConnect(at Pt) { s.NC = append(s.NC, at) }
 
 func (s *Sheet) junction(at Pt) {
 	s.items = append(s.items, L("junction",
@@ -528,10 +548,10 @@ func (s *Sheet) labelFontExpr() *Node {
 }
 
 // mark — отметка «что уже есть на листе» для moveSince.
-type mark struct{ items, wires, pins, buses, entries int }
+type mark struct{ items, wires, pins, buses, entries, nc int }
 
 func (s *Sheet) mark() mark {
-	return mark{len(s.items), len(s.wires), len(s.pinPts), len(s.buses), len(s.entries)}
+	return mark{len(s.items), len(s.wires), len(s.pinPts), len(s.buses), len(s.entries), len(s.NC)}
 }
 
 // moveSince сдвигает всё, что добавлено на лист после m (один блок): узлы, провода, точки выводов, шины — и элементы
@@ -560,6 +580,9 @@ func (s *Sheet) moveSince(m mark, dx, dy float64) {
 	}
 	for i := m.buses; i < len(s.buses); i++ {
 		s.buses[i] = [2]Pt{mv(s.buses[i][0]), mv(s.buses[i][1])}
+	}
+	for i := m.nc; i < len(s.NC); i++ {
+		s.NC[i] = mv(s.NC[i])
 	}
 	for i := m.entries; i < len(s.entries); i++ {
 		s.entries[i] = [2]Pt{mv(s.entries[i][0]), mv(s.entries[i][1])}

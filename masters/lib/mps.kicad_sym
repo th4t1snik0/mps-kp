@@ -6071,7 +6071,7 @@
 		)
 		(symbol "IDT7005_0_1"
 			(rectangle
-				(start -10.16 -40.64)
+				(start -10.16 -43.18)
 				(end 10.16 40.64)
 				(stroke
 					(width 0.254)
@@ -6156,7 +6156,7 @@
 				)
 			)
 			(pin power_in line
-				(at -3.81 -43.18 90)
+				(at -3.81 -45.72 90)
 				(length 2.54)
 				(name "GND"
 					(effects
@@ -6228,7 +6228,7 @@
 				)
 			)
 			(pin power_in line
-				(at -1.27 -43.18 90)
+				(at -1.27 -45.72 90)
 				(length 2.54)
 				(name "GND"
 					(effects
@@ -6480,7 +6480,7 @@
 				)
 			)
 			(pin power_in line
-				(at 1.27 -43.18 90)
+				(at 1.27 -45.72 90)
 				(length 2.54)
 				(name "GND"
 					(effects
@@ -6786,7 +6786,7 @@
 				)
 			)
 			(pin power_in line
-				(at 3.81 -43.18 90)
+				(at 3.81 -45.72 90)
 				(length 2.54)
 				(name "GND"
 					(effects
@@ -11211,7 +11211,7 @@
 		(symbol "IDT7005_G_0_1"
 			(rectangle
 				(start -10.16 40.64)
-				(end 10.16 -40.64)
+				(end 10.16 -43.18)
 				(stroke
 					(width 0.254)
 					(type default)
@@ -11221,7 +11221,7 @@
 				)
 			)
 			(polyline
-				(pts (xy -2.54 40.64) (xy -2.54 -40.64))
+				(pts (xy -2.54 40.64) (xy -2.54 -43.18))
 				(stroke
 					(width 0.254)
 					(type default)
@@ -11231,7 +11231,7 @@
 				)
 			)
 			(polyline
-				(pts (xy 2.54 40.64) (xy 2.54 -40.64))
+				(pts (xy 2.54 40.64) (xy 2.54 -43.18))
 				(stroke
 					(width 0.254)
 					(type default)
@@ -11323,7 +11323,7 @@
 				)
 			)
 			(pin power_in line
-				(at -3.81 -43.18 90)
+				(at -3.81 -45.72 90)
 				(length 2.54)
 				(name ""
 					(effects
@@ -11395,7 +11395,7 @@
 				)
 			)
 			(pin power_in line
-				(at -1.27 -43.18 90)
+				(at -1.27 -45.72 90)
 				(length 2.54)
 				(name ""
 					(effects
@@ -11647,7 +11647,7 @@
 				)
 			)
 			(pin power_in line
-				(at 1.27 -43.18 90)
+				(at 1.27 -45.72 90)
 				(length 2.54)
 				(name ""
 					(effects
@@ -11953,7 +11953,7 @@
 				)
 			)
 			(pin power_in line
-				(at 3.81 -43.18 90)
+				(at 3.81 -45.72 90)
 				(length 2.54)
 				(name ""
 					(effects

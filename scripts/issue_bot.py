@@ -54,6 +54,14 @@ def raw(nick, rel):
     return f"https://raw.githubusercontent.com/{REPO}/main/students/{nick}/{rel}"
 
 
+def issue_state(n):
+    """open | closed | "" — состояние Issue (gh, токен джобы); не получилось — пусто (тогда папку не отдаём)."""
+    if not n:
+        return ""
+    r = subprocess.run(["gh", "api", f"repos/{REPO}/issues/{n}", "--jq", ".state"], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
 def welcome(nick, fio, group, m):
     return card(1, f"👋 {fio}, {group}, вариант {m} — курсач заведён",
                 student="Курсач идёт **тремя шагами**, по одной команде на шаг — пишите её комментарием сюда:\n\n"
@@ -331,14 +339,18 @@ def main():
         if read(d).strip() == issue:
             mine = os.path.basename(os.path.dirname(d))
     taken = lambda n: read(os.path.join(ROOT, "students", n, "issue")).strip() not in ("", issue)
+    takeover = ""  # номер прежнего (закрытого) Issue, если этот Issue продолжает ту же папку
     if taken(nick):
         other = read(os.path.join(ROOT, "students", nick, "variant.yaml"))
         om = re.search(r"^m:\s*(\d+)", other, re.M)
+        prev = read(os.path.join(ROOT, "students", nick, "issue")).strip()
         if om and om.group(1) != m:
             nick = f"{nick}_{m}"  # тёзка в той же группе с другим вариантом
+        elif event == "opened" and issue_state(prev) == "closed":
+            takeover = prev  # тот же студент начал новый Issue, старый закрыт: продолжаем его папку, прогоны — дальше по номерам
         else:
             reply.append(f"❌ Вариант {m} группы {group} с этим ФИО уже ведётся в Issue #{read(os.path.join(ROOT, 'students', nick, 'issue')).strip()}. "
-                         "Работайте там (если это ошибка — напишите руководителю репо).")
+                         "Работайте там. Начать заново в новом Issue — сначала закройте старый (прогоны и история в нём сохранятся).")
             return finish("", [], [], reply)
     for vy in glob.glob(os.path.join(ROOT, "students", "*", "variant.yaml")):
         d = os.path.basename(os.path.dirname(vy))
@@ -364,6 +376,15 @@ def main():
             dispatch.append("km1" if not old else "km1-next")
         if own != issue:
             write(nick, "issue", issue + "\n", changed)
+        if takeover:
+            if "km1" not in dispatch and "km1-next" not in dispatch:
+                dispatch.append("km1-next")  # заново: КМ-1 → КМ-2 → КМ-3 по текущим файлам студента
+            reply.append(welcome(nick, fio, group, m))
+            reply.append(f"🔁 Продолжаю папку `students/{nick}/` из закрытого Issue #{takeover}: ваши файлы (ПЗ, программы, замечания) "
+                         "на месте, сборка идёт заново. **Прошлые прогоны не перетираются** — ни в ветке `results`, ни на Яндекс-диске: "
+                         "новые получат следующие номера (`СХЕМА-N+1`, `ПЗ1-K+1 по СХЕМА-…`). История и карточки — в Issue "
+                         f"#{takeover}, новые — здесь.")
+            return finish(nick, changed, dispatch, reply)
         if event == "opened" or not old:
             reply.append(welcome(nick, fio, group, m))
         elif changed:

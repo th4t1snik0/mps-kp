@@ -158,6 +158,14 @@ func idt7005(sym *schgen.Node) {
 			nb := k.Find("number")
 			return nb != nil && (nb.Arg(0) == "23" || nb.Arg(0) == "58")
 		})
+		// корпус ниже на 2,54: имена GND (вертикальные) не наезжают на I/O7L, I/O7R (замечание руководителя 06.10.2026)
+		for _, r := range n.All("rectangle") {
+			for _, h := range []string{"start", "end"} {
+				if e := r.Find(h); e != nil && e.Num(1) == -40.64 {
+					e.Kids[2] = schgen.F(-43.18)
+				}
+			}
+		}
 		// GND 5/9/24/41 в символе KiCad стоят в одной точке — разносим, чтобы были видны
 		// все номера (как у VCC 8/13/57); 9/24/41 там passive — делаем power_in;
 		// BUSY: в нашем режиме slave (M/S=0) — вход запрета записи
@@ -167,6 +175,7 @@ func idt7005(sym *schgen.Node) {
 				k.Kids[1] = schgen.A("power_in")
 				x := map[string]float64{"5": -3.81, "9": -1.27, "24": 1.27, "41": 3.81}[k.Find("number").Arg(0)]
 				k.Find("at").Kids[1] = schgen.F(x)
+				k.Find("at").Kids[2] = schgen.F(-45.72)
 				k.Remove(func(h *schgen.Node) bool { return h.Head() == "hide" })
 			}
 			if nm != nil && strings.Contains(nm.Arg(0), "BUSY") {

@@ -53,6 +53,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
           REPO_OWNER: ${{ github.repository_owner }}
+          GH_TOKEN: ${{ github.token }}   # состояние прежнего Issue студента (продолжение папки из закрытого Issue)
           ISSUE_BODY_FILE: ${{ runner.temp }}/issue.md
           COMMENT_FILE: ${{ runner.temp }}/comment.md
         run: |

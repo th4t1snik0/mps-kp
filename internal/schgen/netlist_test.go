@@ -72,17 +72,28 @@ func TestNetlist(t *testing.T) {
 						t.Errorf("цепь %s:\n  ждём %v\n  есть %v (%s)", name, sorted(want), nets.members[got], got)
 					}
 				}
-				// правый порт IDT — «почтовый ящик» внешнего устройства: адрес и CE/OE/SEM/BUSY на питании
+				// IDT7005: выводы на питании (R/WL, OER, SEM, BUSY, M/S)
 				idt := sh.Roles["idt"].Ref
 				for pin, want := range idtFixed(v) {
 					if got := nets.byPin[fmt.Sprintf("%s.%d", idt, pin)]; got != want {
 						t.Errorf("IDT7005 вывод %d: ждём %s, есть %s", pin, want, got)
 					}
 				}
-				// ни один вывод микросхем не висит в цепи из одного вывода (кроме NC)
+				// ни один вывод микросхем не висит в цепи из одного вывода; свободны только выводы из списка NC
+				nc := map[[2]int64]bool{}
+				for _, p := range sh.NC {
+					nc[[2]int64{int64(p.X*100 + 0.5), int64(p.Y*100 + 0.5)}] = true
+				}
 				for n, m := range nets.members {
 					if len(m) == 1 && !strings.HasPrefix(n, "unconnected-") {
 						t.Errorf("цепь %s из одного вывода %v", n, m)
+					}
+					if strings.HasPrefix(n, "unconnected-") {
+						for _, rp := range m {
+							if p, ok := sh.pinAt(rp); !ok || !nc[[2]int64{int64(p.X*100 + 0.5), int64(p.Y*100 + 0.5)}] {
+								t.Errorf("вывод %s не подключён, а в списке свободных (NC) его нет", rp)
+							}
+						}
 					}
 				}
 			})
@@ -90,13 +101,10 @@ func TestNetlist(t *testing.T) {
 	}
 }
 
-// idtFixed — выводы IDT7005, привязанные к питанию: правый порт пишет только внешнее устройство в одну ячейку
-// (все единицы адреса), левый порт — МК.
+// idtFixed — выводы IDT7005 на питании: левый порт МК только читает (R/WL = 1), правый только пишет (OER = 1);
+// slave (M/S = 0), BUSY и SEM не используются (методичка, Прил. А; принятая схема 2025).
 func idtFixed(v Variant) map[int]string {
-	m := map[int]string{22: "GND", 19: "+5V", 21: "+5V", 39: "+5V", 42: "+5V", 60: "+5V", 40: "GND"}
-	for i := 0; i <= 12; i++ {
-		m[37-i] = "+5V"
-	}
+	m := map[int]string{61: "+5V", 19: "+5V", 21: "+5V", 39: "+5V", 42: "+5V", 60: "+5V", 40: "GND"}
 	if !v.Decoder { // ТЗ-2025: окно 2 КБ, A11/A12 обоих портов на земле
 		m[26], m[25], m[55], m[56] = "GND", "GND", "GND", "GND"
 	}
@@ -161,17 +169,17 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 			m = append(m, r("kb173", 14-i))
 		}
 		e[fmt.Sprintf("AD%d", i)] = m
-		e[fmt.Sprintf("A%d", i)] = []string{r("latchA", 19-i), r("idt", 44+i)}
+		e[fmt.Sprintf("A%d", i)] = []string{r("latchA", 19-i), r("idt", 44+i), r("idt", 37-i)}
 		e[fmt.Sprintf("X2_%d", i)] = []string{r("idt", dr[i]), rc("xsX2", 2+i)}
 		e[fmt.Sprintf("Y2_%d", i)] = []string{r("latchY2", 19-i), rc("xsY", 3+i)}
 	}
 	for i := 8; i <= 10; i++ {
-		e[fmt.Sprintf("A%d", i)] = []string{r("mcu", 13+i), r("idt", 44+i)}
+		e[fmt.Sprintf("A%d", i)] = []string{r("mcu", 13+i), r("idt", 44+i), r("idt", 37-i)}
 	}
 	if v.Decoder {
-		// ТЗ-2026: P2 целиком — адрес; A11, A12 — на левый порт IDT; A13..A15 — на дешифратор
-		e["A11"] = []string{r("mcu", 24), r("idt", 55)}
-		e["A12"] = []string{r("mcu", 25), r("idt", 56)}
+		// ТЗ-2026: P2 целиком — адрес; A11, A12 — на оба порта IDT; A13..A15 — на дешифратор
+		e["A11"] = []string{r("mcu", 24), r("idt", 55), r("idt", 26)}
+		e["A12"] = []string{r("mcu", 25), r("idt", 56), r("idt", 25)}
 		for i := 13; i <= 15; i++ {
 			e[fmt.Sprintf("A%d", i)] = []string{r("mcu", 13+i), r("dec", i-12)}
 		}
@@ -179,11 +187,11 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		yPin := []string{"15", "14", "13", "12", "11", "10", "9", "7"}
 		mp = func(y string) string { return r("dec", yPin[y[1]-'0']) }
 	}
-	e["CSbuf"] = []string{mp(v.CS.Buf), r("idt", 59)}
+	e["CSbuf"] = []string{mp(v.CS.Buf), r("idt", 59), r("idt", 22)}
 	e["CSy2"] = []string{mp(v.CS.Y2), r("norY2", 2)}
 	e["CSkb"] = []string{mp(v.CS.Kb), r("kb173", 9), r("kb173", 10), r("or", 1)}
 	e["CSind"] = []string{mp(v.CS.Ind), r("norInd", 5)}
-	e["WR"] = []string{r("mcu", 16), r("norY2", 3), r("norInd", 6), r("kb173", 7), r("idt", 61)}
+	e["WR"] = []string{r("mcu", 16), r("norY2", 3), r("norInd", 6), r("kb173", 7), r("idt", 20)}
 	e["RD"] = []string{r("mcu", 17), r("idt", 62), r("or", 2)}
 	e["ALE"] = []string{r("mcu", 30), r("latchA", 11)}
 	e["Y1"] = []string{r("mcu", mcuPin(v.Y1)), rc("xsY", 1)}
@@ -195,8 +203,8 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		andOut, andIn = "6", []string{"1", "2", "4", "5"}
 	}
 	e["INTkb"] = []string{r("mcu", intPin[v.KbInt]), r("and", andOut)}
-	// строб X2 внешнего устройства: запись в правый порт (R/WR) и прерывание МК
-	e["INTx2"] = []string{r("mcu", intPin[v.X2Int]), rc("xsX2", 1), r("idt", 20)}
+	// строб X2 внешнего устройства — только прерывание МК (методичка, Прил. А)
+	e["INTx2"] = []string{r("mcu", intPin[v.X2Int]), rc("xsX2", 1)}
 	e["OE244"] = []string{r("or", 3), r("buf", 1), r("buf", 19)}
 	e["LoadY2"] = []string{r("norY2", 1), r("latchY2", 11)}
 	e["LoadInd"] = []string{r("norInd", 4), r("latchInd", 11)}
@@ -227,4 +235,18 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		e[fmt.Sprintf("seg%d", i)] = []string{r(rr, 2), r("hg", seg[i])}
 	}
 	return e
+}
+
+// pinAt — положение вывода «DD3.9» на листе.
+func (s *Sheet) pinAt(refPin string) (Pt, bool) {
+	i := strings.LastIndexByte(refPin, '.')
+	ref, num := refPin[:i], refPin[i+1:]
+	for _, c := range s.syms {
+		if c.Ref == ref {
+			if p, ok := c.pins[num]; ok {
+				return p, true
+			}
+		}
+	}
+	return Pt{}, false
 }

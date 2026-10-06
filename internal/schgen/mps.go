@@ -120,15 +120,12 @@ func mcuPin(p string) string {
 	panic("порт " + p)
 }
 
-// tapRight: вывод слева от шины busX → провод до шины, отвод «\» вниз к шине, метка у шины.
+// tapRight: вывод слева от шины busX → провод до шины, отвод к шине, метка с именем линии — у места входа в шину
+// (ГОСТ 2.702: линию групповой связи помечают в точке слияния; типовые замечания — «имя линии в каждой точке входа»).
 func (b *builder) tapRight(pin Pt, busX float64, name string) {
 	e := Pt{busX - 2.54, pin.Y}
 	b.Wire(pin, e)
 	b.BusEntry(e, 2.54, 2.54)
-	if b.Sheet.J.LabelAtPin && e.X-pin.X > 12 {
-		b.Label(name, pin.Add(1.27, 0), false)
-		return
-	}
 	b.Label(name, e, true)
 }
 
@@ -137,10 +134,6 @@ func (b *builder) tapLeft(pin Pt, busX float64, name string) {
 	e := Pt{busX + 2.54, pin.Y}
 	b.Wire(pin, e)
 	b.BusEntry(Pt{busX, pin.Y + 2.54}, 2.54, -2.54)
-	if b.Sheet.J.LabelAtPin && pin.X-e.X > 12 {
-		b.Label(name, pin.Add(-1.27, 0), true)
-		return
-	}
 	b.Label(name, e, false)
 }
 
@@ -179,7 +172,7 @@ func Build(lib *Lib, v Variant, seed string) *Sheet {
 	if b.v.Style.Name == "" {
 		b.v.Style = Styles["A"]
 	}
-	b.SetPerpEntries(b.v.Style.Perp)
+	b.SetPerpEntries(true) // отводы только Т-образно, 90° (лекция ч1 с. 10 рис. 1.6, типовые замечания); 45° — замечание руководителя 06.10.2026
 	setCSNames(v.Decoder)
 	if v.Filter == "" {
 		v.Filter = "68 н"
@@ -351,7 +344,7 @@ func (b *builder) y2Reg() {
 	// Load = ИЛИ-НЕ(CSy2, WR)
 	ld := u.Pin("11")
 	g := b.role("norY2", b.Sym("74HC02", "DD1", "74HC02", Pt{ld.X - 11.43, ld.Y}, SymOpt{Unit: 1,
-		RefAt: ptr(Pt{ld.X - 13.97, ld.Y - 5.08}), RefJust: "left", HideVal: true}))
+		RefAt: ptr(Pt{ld.X - 13.97, ld.Y + 7.62}), RefJust: "left", HideVal: true})) // под вентилем: сверху идёт провод AD7
 	b.Wire(g.Pin("1"), ld)
 	b.tapLeft(g.Pin("2"), xBM, nCSy2)
 	b.tapLeft(g.Pin("3"), xBM, nWR)
@@ -388,15 +381,13 @@ func (b *builder) idt() {
 	for i, n := range dl {
 		b.tapLeft(u.Pin(n), xBI, fmt.Sprintf("AD%d", i))
 	}
-	// R/WL ← WR: МК и читает буфер, и пишет в него (процедура записи — данные из A)
-	b.tapLeft(u.Pin("61"), xBI, nWR)
-	// BUSYL, SEML → +5 В (BUSY-вход в slave не блокирует, семафоры не используются)
+	// R/WL, BUSYL, SEML → +5 В (левый порт МК только читает; BUSY-вход в slave не блокирует, семафоры не используются)
 	xl := 185.42
-	for _, n := range []string{"42", "60"} {
+	for _, n := range []string{"61", "42", "60"} {
 		b.Wire(u.Pin(n), Pt{xl, u.Pin(n).Y})
 	}
-	b.Wire(Pt{xl, u.Pin("42").Y}, Pt{xl, u.Pin("60").Y})
-	b.Power("+5V", Pt{xl, u.Pin("42").Y}, 90)
+	b.Wire(Pt{xl, u.Pin("61").Y}, Pt{xl, u.Pin("60").Y})
+	b.Power("+5V", Pt{xl, u.Pin("61").Y}, 90)
 	// M/S → GND: режим slave, арбитраж BUSY выключен
 	ms := u.Pin("40")
 	b.Wire(ms, Pt{xl, ms.Y})
@@ -414,37 +405,31 @@ func (b *builder) idt() {
 		b.gnd(Pt{xl, u.Pin("56").Y + 1.27})
 	}
 
-	// правый порт — «почтовый ящик» внешнего устройства (ТЗ: независимая 8-разрядная шина со стробом записи):
-	// адрес зашит единицами (последняя ячейка окна, вне кольца), CER = 0, OER = 1 — порт только пишет,
-	// запись — стробом X2stb (R/WR), он же — прерывание МК; в обработчике МК читает ящик левым портом
-	// и кладёт отсчёт в кольцо процедурой записи. Указатели и флаги ведёт МК.
+	// правый порт — по методичке (Прил. А): адрес и выбор — с шины МК (те же A0–A12 и CS_buf, что у левого порта),
+	// запись — WR МК, данные — с разъёма внешнего устройства; OER = 1 (порт только пишет). МК командой movx @DPTR
+	// записывает в ячейку «головы» байт, выставленный внешним устройством; строб X2 — только прерывание МК.
 	xr := 215.9
-	cer := u.Pin("22")
-	b.Wire(cer, Pt{xr, cer.Y})
-	b.Power("GND", Pt{xr, cer.Y}, 90)
-	b.tapRight(u.Pin("20"), xBR, "~{"+b.v.X2Int+"}")
+	b.tapRight(u.Pin("22"), xBR, nCSbuf)
+	b.tapRight(u.Pin("20"), xBR, nWR)
 	oer := u.Pin("19")
-	b.Wire(oer, Pt{xr - 2.54, oer.Y})
-	b.Power("+5V", Pt{xr - 2.54, oer.Y}, 270)
+	b.Wire(oer, Pt{xr, oer.Y})
+	b.Power("+5V", Pt{xr, oer.Y}, 270)
 	b.Wire(u.Pin("39"), Pt{xr, u.Pin("39").Y}, Pt{xr, u.Pin("21").Y})
 	b.Wire(u.Pin("21"), Pt{xr, u.Pin("21").Y})
 	b.Power("+5V", Pt{xr, u.Pin("39").Y}, 270)
 	b.nc(u.Pin("38"))
-	last := 12
-	if !b.v.Decoder {
-		last = 10 // A11R, A12R → GND (буфер ≤ 2 КБ)
+	for i := 0; i <= 10; i++ {
+		b.tapRight(u.Pin(strconv.Itoa(37-i)), xBR, fmt.Sprintf("A%d", i))
+	}
+	if b.v.Decoder {
+		b.tapRight(u.Pin("26"), xBR, "A11")
+		b.tapRight(u.Pin("25"), xBR, "A12")
+	} else {
 		b.Wire(u.Pin("26"), Pt{xr, u.Pin("26").Y})
 		b.Wire(u.Pin("25"), Pt{xr, u.Pin("25").Y}, Pt{xr, u.Pin("26").Y})
 		b.Wire(Pt{xr, u.Pin("25").Y}, Pt{xr, u.Pin("25").Y + 1.27})
 		b.gnd(Pt{xr, u.Pin("25").Y + 1.27})
 	}
-	top, bot := u.Pin("37"), u.Pin(strconv.Itoa(37-last))
-	for i := 0; i <= last; i++ {
-		p := u.Pin(strconv.Itoa(37 - i))
-		b.Wire(p, Pt{xr, p.Y})
-	}
-	b.Wire(Pt{xr, top.Y}, Pt{xr, bot.Y})
-	b.Power("+5V", Pt{xr, top.Y}, 270)
 	dr := []string{"10", "11", "12", "14", "15", "16", "17", "18"}
 	for i, n := range dr {
 		b.tapRight(u.Pin(n), xBR, fmt.Sprintf("X2_%d", i))
@@ -496,7 +481,7 @@ func (b *builder) conn(role, which, sym, ref string, at Pt) *Comp {
 
 func (b *builder) placeConnXY() {
 	const bx = 250.19 // шины к разъёмам
-	// XS2: строб X2 → вход прерывания и R/WR правого порта IDT, данные X2 → правый порт IDT
+	// XS2: строб X2 → вход прерывания, данные X2 → правый порт IDT
 	c := b.conn("xsX2", "x2", "CONN_X2", "XS2", Pt{xConn, yXS2})
 	stb := cp(c, 1)
 	e := Pt{xBR + 2.54, stb.Y}
@@ -534,7 +519,8 @@ func (b *builder) placeConnXY() {
 	b.Wire(gp, Pt{gp.X - 1.27, gp.Y}, Pt{gp.X - 1.27, gp.Y + 1.27})
 	b.gnd(Pt{gp.X - 1.27, gp.Y + 1.27})
 	// шина Y2: от DD5 вниз, вправо под IDT, вверх к разъёму
-	b.Bus(Pt{162.56, 96.52 + 2.54}, Pt{162.56, 132.08}, Pt{bx, 132.08})
+	// ниже земли IDT7005 (корпус удлинён на 2,54) и между отводами XS3
+	b.Bus(Pt{162.56, 96.52 + 2.54}, Pt{162.56, 134.62}, Pt{bx, 134.62})
 	b.Bus(Pt{bx, cp(c, 3).Y + 2.54}, Pt{bx, cp(c, 10).Y + 2.54})
 }
 
@@ -566,7 +552,7 @@ func (b *builder) rowY(r int) float64 { return kbRow0 + float64(r)*b.Sheet.J.KbD
 func (b *builder) keyboard() {
 	v := b.v
 	// DD2 74HC173 — столбцы
-	at := Pt{63.5, 157.48}
+	at := Pt{60.96, 157.48} // левее: у корпуса с полями (стиль C, D) правый край не под «+5V» подтяжек
 	u := b.role("kb173", b.Sym("74HC173", "DD2", "74HC173", at, b.icLabels(Pt{at.X, at.Y - 22.86})))
 	b.vcc(u.Pin("16"))
 	b.gnd(u.Pin("8"))
@@ -629,8 +615,8 @@ func (b *builder) keyboard() {
 		}
 	}
 	// строки: подтяжка 2k к +5 В, последовательный 10k, C на GND (3RC ≥ 5 мс)
-	b.vcc(Pt{kbVcc, b.rowY(0) - 5.08})
-	b.Wire(Pt{kbVcc, b.rowY(0) - 5.08}, Pt{kbVcc, lastRow})
+	b.vcc(Pt{kbVcc, b.rowY(0) - 2.54}) // ниже — надпись «+5V» не заходит под корпус DD2 с полями
+	b.Wire(Pt{kbVcc, b.rowY(0) - 2.54}, Pt{kbVcc, lastRow})
 	pull := make([]*Comp, v.Rows)
 	for r := 0; r < v.Rows; r++ {
 		y := b.rowY(r)
@@ -710,14 +696,15 @@ func (b *builder) rowsAndInt() {
 	}
 
 	// 1OE, 2OE ← ИЛИ(CSkb, RD): чтение строк только при обращении к клавиатуре
-	g := b.role("or", b.Sym("74HC32", "DD9", "74HC32", Pt{213.36, 213.36}, SymOpt{Unit: 1,
-		RefAt: ptr(Pt{210.82, 207.01}), RefJust: "left", HideVal: true}))
+	// вентиль отодвинут от шины: метка ~{CS_kbd} у входа в шину не наезжает на номер вывода
+	g := b.role("or", b.Sym("74HC32", "DD9", "74HC32", Pt{218.44, 213.36}, SymOpt{Unit: 1,
+		RefAt: ptr(Pt{215.9, 207.01}), RefJust: "left", HideVal: true}))
 	b.tapLeft(g.Pin("1"), xBD, nCSkb)
 	b.tapLeft(g.Pin("2"), xBD, nRD)
 	o := g.Pin("3")
 	oe1, oe2 := u.Pin("1"), u.Pin("19")
 	loopY := max(220.98, b.rowY(v.Rows-1)+5.08) // ниже выхода DD9.1 и последней строки клавиатуры
-	b.Wire(o, Pt{223.52, o.Y}, Pt{223.52, loopY}, Pt{157.48, loopY}, Pt{157.48, oe1.Y}, oe1)
+	b.Wire(o, Pt{228.6, o.Y}, Pt{228.6, loopY}, Pt{157.48, loopY}, Pt{157.48, oe1.Y}, oe1)
 	b.Wire(Pt{157.48, oe2.Y}, oe2)
 }
 
@@ -794,8 +781,8 @@ func (b *builder) power() {
 	b.Wire(ce.Pin("2"), Pt{x, yg})
 	b.Wire(Pt{x, yg}, Pt{x, yg + 1.27})
 	b.gnd(Pt{x, yg + 1.27})
-	xs := x + 11.43 // последний фильтр — левее столбца конденсаторов клавиатуры (нумерация по столбцам)
-	n := 10         // по конденсатору на корпус DD
+	xs := x + 8.89 // последний фильтр — заметно левее столбца конденсаторов клавиатуры (нумерация по столбцам, NumberingDoubts)
+	n := 10        // по конденсатору на корпус DD
 	if b.v.Decoder {
 		n = 11 // + дешифратор
 	}
